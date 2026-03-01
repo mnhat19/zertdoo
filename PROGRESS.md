@@ -9,7 +9,7 @@
 
 | Giai doan | Trang thai | Ghi chu |
 |---|---|---|
-| 0 - Ha tang va khung du an | DANG LAM | Code local xong, cho Koyeb + Neon PostgreSQL |
+| 0 - Ha tang va khung du an | DANG LAM | Code local xong, cho Render + Neon PostgreSQL |
 | 1 - Lop doc du lieu (Readers) | Chua bat dau | Google Sheets, Notion, Tasks, Calendar, Postgres readers |
 | 2 - LLM Integration va Prompts | Chua bat dau | Gemini/Groq client, prompt engineering |
 | 3 - Lop ghi du lieu va SchedulerAgent | Chua bat dau | Writers + pipeline len lich hang ngay |
@@ -26,9 +26,11 @@
 
 - [ ] Dang ky Neon (neon.tech) - tao PostgreSQL database
 - [ ] Chay init_db.sql tren Neon
-- [ ] Tao Dockerfile cho Koyeb
-- [ ] Dang ky Koyeb (app.koyeb.com) bang GitHub
-- [ ] Deploy len Koyeb tu GitHub repo
+- [x] Tao Dockerfile cho deploy
+- [x] Tao render.yaml (Render blueprint)
+- [ ] Dang ky Render (render.com) bang GitHub
+- [ ] Deploy len Render tu GitHub repo
+- [ ] Dang ky UptimeRobot - ping /health moi 5 phut
 - [x] Khoi tao cau truc project (agents/, services/, models/, prompts/, utils/, tests/, scripts/, credentials/)
 - [x] Tao requirements.txt (18 packages)
 - [x] Tao config.py (Pydantic Settings, doc .env, singleton)
@@ -40,8 +42,13 @@
 - [x] Test: config.py doc duoc cau hinh -> OK
 - [x] Test: FastAPI server chay, /health tra ve {"status": "ok"} -> OK
 - [x] Test: time_utils format dung gio VN -> OK
-- [ ] Cau hinh bien moi truong tren Koyeb
-- [ ] Kiem tra: FastAPI /health qua URL cong khai Koyeb
+- [x] Tao Dockerfile cho deploy
+- [x] Cap nhat config.py: ho tro Google credentials base64 (cho cloud)
+- [x] Cap nhat main.py: goi setup_google_credentials khi khoi dong
+- [x] Cap nhat .env.example: them bien base64 cho cloud deploy
+- [x] Tao render.yaml (Render blueprint)
+- [ ] Cau hinh bien moi truong tren Render
+- [ ] Kiem tra: FastAPI /health qua URL cong khai Render
 
 ### Giai doan 1: Lop doc du lieu
 
@@ -124,6 +131,8 @@
 | 01/03/2026 | GD0: Tao cau truc project, config.py, main.py, init_db.sql, .env.example, .gitignore, time_utils.py. Test FastAPI OK. |
 | 01/03/2026 | Quyet dinh: Doi tu Oracle Cloud sang Koyeb + Neon (khong co credit card). |
 | 01/03/2026 | GD0: Tao Dockerfile, cap nhat config.py cho cloud (base64 credentials). |
+| 01/03/2026 | Quyet dinh: Koyeb cung yeu cau credit card. Doi sang Render + Neon + UptimeRobot. |
+| 01/03/2026 | GD0: Tao render.yaml, cap nhat PLAN.md cho Render. |
 
 ---
 
@@ -132,7 +141,7 @@
 | Quyet dinh | Ly do |
 |---|---|
 | Python + FastAPI | Async native, ecosystem manh cho Google APIs va LLM |
-| Koyeb (free nano) | 24/7, khong ngu, 256MB RAM, deploy tu GitHub, khong can credit card |
+| Render (free web service) | Khong can credit card, 750h free/thang, dung UptimeRobot ping giu song 24/7 |
 | Neon PostgreSQL | Free vinh vien, 0.5GB, 191h compute/thang, serverless |
 | Gemini primary, Groq fallback | Gemini free tier lon (1500 req/ngay), context 1M tokens |
 | APScheduler | Cron trong process, khong can Celery/Redis, giam phuc tap |

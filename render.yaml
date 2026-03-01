@@ -1,0 +1,37 @@
+# === Render Blueprint (Infrastructure as Code) ===
+# File nay dinh nghia cach Render deploy ung dung.
+# Render doc file nay tu repo GitHub de tu dong cau hinh.
+# Docs: https://docs.render.com/blueprint-spec
+
+services:
+  - type: web
+    name: zertdoo
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false  # Dien thu cong tren Render dashboard
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GOOGLE_SPREADSHEET_ID
+        sync: false
+      - key: NOTION_TOKEN
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_ALLOWED_CHAT_ID
+        sync: false
+      - key: TELEGRAM_WEBHOOK_SECRET
+        sync: false
+      - key: GOOGLE_CREDENTIALS_BASE64
+        sync: false
+      - key: GOOGLE_TOKEN_BASE64
+        sync: false
+      - key: WEBHOOK_BASE_URL
+        sync: false
+      - key: GMAIL_RECIPIENT
+        value: nhatdm234112e@st.uel.edu.vn

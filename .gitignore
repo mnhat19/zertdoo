@@ -36,3 +36,5 @@ Thumbs.db
 # === Assets (anh lon) ===
 assets/*.jpg
 assets/*.png
+*.jpg
+*.png

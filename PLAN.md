@@ -8,9 +8,9 @@
 | Web framework | FastAPI + Uvicorn |
 | LLM chinh | Gemini 2.0 Flash (fallback: Groq Llama 3.3 70B) |
 | Database | PostgreSQL (Neon - serverless, free tier) |
-| Deploy | Koyeb free nano (256MB RAM, 24/7, khong can credit card) |
+| Deploy | Render free (512MB RAM, 24/7 voi UptimeRobot pinger) |
 | Cron/Scheduler | APScheduler (trong process) |
-| Reverse proxy | Koyeb tu cung cap HTTPS + domain |
+| Reverse proxy | Render tu cung cap HTTPS + domain .onrender.com |
 
 ---
 
@@ -21,7 +21,8 @@ zertdoo/
   main.py                  # FastAPI entry point, khoi dong APScheduler
   config.py                # Bien moi truong, Pydantic Settings
   .env                     # Secrets (khong commit)
-  Dockerfile               # Build image cho Koyeb
+  Dockerfile               # Build image cho Render
+  render.yaml              # Cau hinh Render deploy (Infrastructure as Code)
   requirements.txt         # Dependencies
   agents/
     scheduler.py           # SchedulerAgent - len lich hang ngay
@@ -64,7 +65,7 @@ zertdoo/
 
 ### Giai doan 0: Ha tang va khung du an
 
-**Muc tieu:** Koyeb chay duoc FastAPI server, Neon PostgreSQL ket noi duoc, project co cau truc.
+**Muc tieu:** Render chay duoc FastAPI server 24/7, Neon PostgreSQL ket noi duoc, project co cau truc.
 
 **Viec can lam:**
 
@@ -79,21 +80,30 @@ zertdoo/
    - PostgreSQL schema: init_db.sql
    - Utils: time_utils.py
 
-3. **Dockerfile cho Koyeb:**
+3. **Dockerfile cho Render:**
    - Base image: python:3.11-slim
    - Copy code, cai dependencies, chay uvicorn
-   - Koyeb se build tu Dockerfile nay
+   - Render se build tu Dockerfile nay
 
-4. **Koyeb (hosting mien phi):**
-   - Truy cap https://app.koyeb.com va dang ky bang GitHub
-   - Tao service moi, tro den GitHub repo
-   - Chon Dockerfile builder
+4. **Render (hosting mien phi):**
+   - Truy cap https://render.com va dang ky bang GitHub, KHONG can credit card
+   - Tao Web Service moi, tro den GitHub repo
+   - Chon Docker runtime
    - Cau hinh bien moi truong (tu .env)
-   - Koyeb tu dong cung cap domain HTTPS (vd: zertdoo-xxx.koyeb.app)
+   - Render tu dong cung cap domain HTTPS (vd: zertdoo.onrender.com)
+   - Van de: free tier ngu sau 15 phut idle
+   - Giai phap: dung UptimeRobot (mien phi) ping /health moi 5 phut -> server khong ngu
+   - 750 gio free/thang = du 24/7 (1 thang chi can 720 gio)
 
-5. **Google credentials:**
+5. **UptimeRobot (giu server song):**
+   - Truy cap https://uptimerobot.com va dang ky (mien phi)
+   - Tao monitor moi: HTTP(s), URL = https://zertdoo.onrender.com/health
+   - Interval: 5 phut
+   - Server se khong bao gio ngu
+
+6. **Google credentials:**
    - Luu credentials duoi dang bien moi truong (base64 encode) thay vi file
-   - Koyeb khong co filesystem co dinh, phai doc tu env var
+   - Render khong co filesystem co dinh, phai doc tu env var
    - Code se decode va tao file tam khi khoi dong
 
 4. **PostgreSQL schema ban dau:**
@@ -155,9 +165,10 @@ zertdoo/
 
 **Tieu chi hoan thanh:**
 - Neon PostgreSQL ket noi duoc, 5 bang da tao
-- Koyeb deploy thanh cong, truy cap `https://xxx.koyeb.app/health` tra ve ok
-- Bien moi truong cau hinh dung tren Koyeb
-- Truy cap `https://xxx.koyeb.app/docs` thay FastAPI Swagger UI
+- Render deploy thanh cong, truy cap `https://zertdoo.onrender.com/health` tra ve ok
+- UptimeRobot ping thanh cong, server khong bi ngu
+- Bien moi truong cau hinh dung tren Render
+- Truy cap `https://zertdoo.onrender.com/docs` thay FastAPI Swagger UI
 
 ---
 
@@ -508,10 +519,11 @@ zertdoo/
 
 **Viec can lam:**
 
-1. **Koyeb auto-deploy:**
-   - Ket noi GitHub repo, moi lan push code Koyeb tu build lai
-   - Health check endpoint /health de Koyeb detect loi
-   - Koyeb tu dong restart khi container crash
+1. **Render auto-deploy:**
+   - Ket noi GitHub repo, moi lan push code Render tu build lai
+   - Health check endpoint /health de Render detect loi
+   - Render tu dong restart khi container crash
+   - UptimeRobot ping moi 5 phut giu server song
 
 2. **Error handling toan he thong:**
    - Moi agent co try-except bao quanh
