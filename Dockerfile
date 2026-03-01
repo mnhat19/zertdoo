@@ -16,8 +16,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy toan bo code
 COPY . .
 
-# Render su dung PORT env var, mac dinh 8000
+# Render su dung PORT env var (thuong la 10000), mac dinh 8000 cho local
 EXPOSE 8000
 
-# Chay FastAPI bang uvicorn, dung PORT tu env var neu co
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# QUAN TRONG: Render truyen PORT env var dong, phai dung shell form de doc $PORT
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
