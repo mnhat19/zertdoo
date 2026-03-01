@@ -13,7 +13,7 @@
 | 1 - Lop doc du lieu (Readers) | HOAN THANH | 5 readers + parser + schemas + database service |
 | 2 - LLM Integration va Prompts | HOAN THANH | Gemini 2.5 Flash + Groq Llama 3.1 8B, 3 prompts, retry + fallback |
 | 3 - Lop ghi du lieu va SchedulerAgent | HOAN THANH | SchedulerAgent full pipeline + APScheduler cron 6:00 AM |
-| 4 - TelegramAgent | Chua bat dau | Tuong tac 2 chieu, thong bao chu dong |
+| 4 - TelegramAgent | HOAN THANH | Webhook + handle_message + 3 notification jobs + action execution |
 | 5 - SyncAgent | Chua bat dau | Dong bo trang thai giua cac nguon |
 | 6 - ReportAgent va Gmail | Chua bat dau | Bao cao dinh ky, gui email |
 | 7 - Deploy, Hardening, Dashboard | Chua bat dau | Systemd, monitoring, web UI |
@@ -92,13 +92,20 @@
 
 ### Giai doan 4: TelegramAgent
 
-- [ ] Tao bot qua BotFather, lay token
-- [ ] Route POST /webhook/telegram trong main.py
-- [ ] agents/telegram.py - TelegramAgent hoan chinh
-- [ ] Xu ly cac intent: reschedule, reprioritize, query, mark_complete, ...
-- [ ] Thong bao chu dong: 6:15 AM, 12:00 PM, 9:00 PM
-- [ ] Bao mat: chi xu ly ALLOWED_CHAT_ID
-- [ ] tests/test_telegram.py
+- [x] Tao bot qua BotFather, lay token + chat_id -> .env
+- [x] services/telegram_sender.py - send_message (auto split >4096), set_webhook, delete_webhook
+- [x] agents/telegram.py - TelegramAgent hoan chinh (context -> LLM -> actions -> reply)
+- [x] Xu ly 9 intents: reschedule, reprioritize, query, mark_complete, add_task, cancel_task, alternative_plan, adjust_duration, general
+- [x] Action execution: complete_task, create_task, delete_task, create_event, reschedule_plan
+- [x] Route POST /webhook/telegram trong main.py (xac thuc secret token + ALLOWED_CHAT_ID)
+- [x] Thong bao chu dong: 6:15 AM (morning summary), 12:00 PM (afternoon reminder), 9:00 PM (evening review)
+- [x] APScheduler 3 cron jobs cho notifications
+- [x] Bao mat: chi xu ly ALLOWED_CHAT_ID
+- [x] Manual trigger endpoints: /api/telegram/test, /api/telegram/morning, /api/telegram/afternoon, /api/telegram/evening
+- [x] models/schemas.py - TelegramAction + TelegramResponse Pydantic models
+- [x] SchedulerAgent cap nhat: gui summary qua Telegram sau khi chay
+- [x] tests/test_telegram.py - 3 tests OK (send, handle_message, morning summary)
+- [x] tests/test_telegram_advanced.py - 3 kich ban phuc tap OK (reprioritize, reasoning, add_task)
 
 ### Giai doan 5: SyncAgent
 
@@ -163,6 +170,12 @@
 | 01/03/2026 | GD3: Test 3 lan thanh cong: 10K ky tu context, Gemini xep 2-5 tasks, Google Tasks tao that, Postgres luu that. |
 | 01/03/2026 | GD3: Fix idempotent: clear_task_list xoa tasks cu truoc khi tao lai. |
 | 01/03/2026 | GD3: Phase 3 HOAN THANH. |
+| 01/03/2026 | GD4: Tao services/telegram_sender.py - httpx async, send_message, set_webhook. |
+| 01/03/2026 | GD4: Them TelegramAction + TelegramResponse vao schemas.py. |
+| 01/03/2026 | GD4: Tao agents/telegram.py - handle_message (context -> LLM -> actions -> reply), 3 notifications (morning, afternoon, evening). |
+| 01/03/2026 | GD4: Cap nhat main.py - webhook handler + 3 APScheduler notification jobs + 4 manual trigger endpoints. |
+| 01/03/2026 | GD4: Test OK: gui tin nhan, phan tich intent (query/reprioritize/add_task), morning summary. |
+| 01/03/2026 | GD4: Phase 4 HOAN THANH. |
 
 ---
 
@@ -183,6 +196,9 @@
 | llama-3.1-8b-instant (Groq fallback) | Nho, nhanh, du cho fallback, free tier cao |
 | clear_task_list truoc khi tao moi | Dam bao idempotent: chay lai khong tao trung tasks |
 | Daily plan UPSERT | ON CONFLICT plan_date -> cap nhat thay vi tao moi |
+| httpx cho Telegram API | Nhe hon python-telegram-bot, chi can gui tin nhan + webhook, khong can framework nang |
+| Background task cho webhook | asyncio.create_task xu ly tin nhan -> tra 200 OK ngay cho Telegram (tranh timeout) |
+| Webhook secret token | X-Telegram-Bot-Api-Secret-Token header xac thuc, tranh fake requests |
 
 ---
 

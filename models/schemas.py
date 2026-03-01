@@ -184,3 +184,28 @@ class DailyPlanOutput(BaseModel):
     risks: list[str] = []
     questions_for_user: list[str] = []
     overall_reasoning: str = ""
+
+
+# ============================================================
+# OUTPUT CUA LLM (TelegramAgent)
+# ============================================================
+
+class TelegramAction(BaseModel):
+    """Mot hanh dong TelegramAgent can thuc thi."""
+    type: str = Field(
+        description="Loai action: update_task, create_task, complete_task, "
+        "delete_task, create_event, update_event, delete_event, "
+        "reschedule_plan, no_action"
+    )
+    params: dict = Field(default_factory=dict, description="Tham so cua action")
+
+
+class TelegramResponse(BaseModel):
+    """Output LLM cho TelegramAgent."""
+    intent: str = Field(
+        description="Intent: reschedule, reprioritize, query, mark_complete, "
+        "add_task, cancel_task, alternative_plan, adjust_duration, general"
+    )
+    response_message: str = Field(description="Tin nhan tra loi cho nguoi dung")
+    actions: list[TelegramAction] = Field(default_factory=list)
+    reasoning: str = Field(default="", description="Giai thich ly do")

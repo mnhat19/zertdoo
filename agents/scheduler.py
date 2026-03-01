@@ -448,7 +448,20 @@ def run_scheduled():
     try:
         result = asyncio.run(run())
         logger.info("SchedulerAgent chay xong. Summary:\n%s", result["summary"][:500])
-        # TODO [Phase 4]: gui summary qua Telegram
+        # Gui summary qua Telegram
+        try:
+            from services.telegram_sender import send_message
+            asyncio.run(send_message(result["summary"]))
+            logger.info("Da gui summary qua Telegram")
+        except Exception as te:
+            logger.error("Loi gui Telegram: %s", te)
     except Exception as e:
         logger.error("SchedulerAgent loi: %s", e, exc_info=True)
-        # TODO [Phase 4]: gui thong bao loi qua Telegram
+        # Gui thong bao loi qua Telegram
+        try:
+            from services.telegram_sender import send_message
+            asyncio.run(send_message(
+                f"[LOI] SchedulerAgent that bai: {type(e).__name__}: {e}"
+            ))
+        except Exception:
+            pass
