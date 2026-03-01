@@ -212,3 +212,28 @@ def delete_task(task_list_id: str, task_id: str) -> bool:
     service.tasks().delete(tasklist=task_list_id, task=task_id).execute()
     logger.info("Da xoa task %s", task_id)
     return True
+
+
+def clear_task_list(task_list_id: str) -> int:
+    """
+    Xoa tat ca tasks trong 1 task list.
+    Dung de lam sach truoc khi tao lai lich moi.
+
+    Returns:
+        So tasks da xoa
+    """
+    tasks = get_tasks_from_list(
+        task_list_id=task_list_id,
+        show_completed=True,
+        show_hidden=True,
+    )
+    service = _get_tasks_service()
+    count = 0
+    for t in tasks:
+        try:
+            service.tasks().delete(tasklist=task_list_id, task=t.task_id).execute()
+            count += 1
+        except Exception as e:
+            logger.warning("Khong xoa duoc task %s: %s", t.task_id, e)
+    logger.info("Da xoa %d/%d tasks tu list %s", count, len(tasks), task_list_id)
+    return count

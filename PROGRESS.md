@@ -12,7 +12,7 @@
 | 0 - Ha tang va khung du an | HOAN THANH | Render + Neon + UptimeRobot da hoat dong |
 | 1 - Lop doc du lieu (Readers) | HOAN THANH | 5 readers + parser + schemas + database service |
 | 2 - LLM Integration va Prompts | HOAN THANH | Gemini 2.5 Flash + Groq Llama 3.1 8B, 3 prompts, retry + fallback |
-| 3 - Lop ghi du lieu va SchedulerAgent | Chua bat dau | Writers + pipeline len lich hang ngay |
+| 3 - Lop ghi du lieu va SchedulerAgent | HOAN THANH | SchedulerAgent full pipeline + APScheduler cron 6:00 AM |
 | 4 - TelegramAgent | Chua bat dau | Tuong tac 2 chieu, thong bao chu dong |
 | 5 - SyncAgent | Chua bat dau | Dong bo trang thai giua cac nguon |
 | 6 - ReportAgent va Gmail | Chua bat dau | Bao cao dinh ky, gui email |
@@ -82,13 +82,13 @@
 
 ### Giai doan 3: Lop ghi du lieu va SchedulerAgent
 
-- [x] services/google_tasks.py - Cac ham write (create, complete, delete) - da lam trong GD1
+- [x] services/google_tasks.py - Cac ham write + clear_task_list (idempotent) - da lam trong GD1
 - [x] services/google_calendar.py - Cac ham write (create, update, delete) - da lam trong GD1
-- [x] services/database.py - Cac ham write (save plan, log task, log agent) - da lam trong GD1
-- [ ] agents/scheduler.py - SchedulerAgent hoan chinh
-- [ ] Dang ky APScheduler cron job 6:00 AM
-- [ ] tests/test_scheduler.py
-- [ ] Kiem tra: chay thu cong, xac nhan output dung
+- [x] services/database.py - Cac ham write (save plan UPSERT, log task, log agent) - da lam trong GD1
+- [x] agents/scheduler.py - SchedulerAgent hoan chinh (6 buoc: collect -> context -> LLM -> parse -> write -> summary)
+- [x] APScheduler trong main.py: cron job 6:00 AM + endpoint /api/scheduler/run
+- [x] tests/test_scheduler.py + tests/run_scheduler_now.py
+- [x] Test thu cong 3 lan: du lieu that, LLM that, Tasks that, DB that, idempotent OK
 
 ### Giai doan 4: TelegramAgent
 
@@ -158,6 +158,11 @@
 | 01/03/2026 | Quyet dinh: Doi google-generativeai (deprecated) sang google-genai (SDK moi). |
 | 01/03/2026 | Quyet dinh: Doi model tu gemini-2.0-flash sang gemini-2.5-flash, groq tu llama-3.3-70b sang llama-3.1-8b-instant. |
 | 01/03/2026 | GD2: Phase 2 HOAN THANH. |
+| 01/03/2026 | GD3: Tao agents/scheduler.py - full pipeline 6 buoc. |
+| 01/03/2026 | GD3: Tich hop APScheduler vao main.py, cron 6:00 AM + /api/scheduler/run endpoint. |
+| 01/03/2026 | GD3: Test 3 lan thanh cong: 10K ky tu context, Gemini xep 2-5 tasks, Google Tasks tao that, Postgres luu that. |
+| 01/03/2026 | GD3: Fix idempotent: clear_task_list xoa tasks cu truoc khi tao lai. |
+| 01/03/2026 | GD3: Phase 3 HOAN THANH. |
 
 ---
 
@@ -176,6 +181,8 @@
 | google-genai thay google-generativeai | google-generativeai da deprecated, google-genai la SDK moi chinh thuc |
 | gemini-2.5-flash | Model moi nhat, ho tro JSON output tot, thinking mode |
 | llama-3.1-8b-instant (Groq fallback) | Nho, nhanh, du cho fallback, free tier cao |
+| clear_task_list truoc khi tao moi | Dam bao idempotent: chay lai khong tao trung tasks |
+| Daily plan UPSERT | ON CONFLICT plan_date -> cap nhat thay vi tao moi |
 
 ---
 
