@@ -16,7 +16,8 @@ python-telegram-bot==21.10
 
 # === Database ===
 asyncpg==0.30.0
-psycopg[binary]==3.2.4
+psycopg-binary==3.2.4
+psycopg==3.2.4
 
 # === Scheduler ===
 apscheduler==3.11.0
