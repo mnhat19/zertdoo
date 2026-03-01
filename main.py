@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from config import settings, setup_google_credentials
+from services.database import init_pool, close_pool
 
 # === Logging ===
 logging.basicConfig(
@@ -33,7 +34,15 @@ async def lifespan(app: FastAPI):
     # Tao file Google credentials tu env var (cho cloud deploy)
     setup_google_credentials()
 
-    # TODO [Giai doan 1]: Ket noi PostgreSQL connection pool
+    # Ket noi PostgreSQL connection pool
+    try:
+        await init_pool()
+        logger.info("Database pool da san sang.")
+    except Exception as e:
+        logger.error("Khong the ket noi database: %s", e)
+        # Cho phep server van chay de debug, nhung DB se khong kha dung
+        logger.warning("Server se chay KHONG co database.")
+
     # TODO [Giai doan 3]: Khoi dong APScheduler voi cac cron jobs
     # TODO [Giai doan 4]: Dang ky Telegram webhook
 
@@ -42,7 +51,7 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Zertdoo dang tat...")
-    # TODO: Dong connection pool, dung scheduler
+    await close_pool()
     logger.info("Zertdoo da tat.")
 
 

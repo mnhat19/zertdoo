@@ -10,7 +10,7 @@
 | Giai doan | Trang thai | Ghi chu |
 |---|---|---|
 | 0 - Ha tang va khung du an | HOAN THANH | Render + Neon + UptimeRobot da hoat dong |
-| 1 - Lop doc du lieu (Readers) | Chua bat dau | Google Sheets, Notion, Tasks, Calendar, Postgres readers |
+| 1 - Lop doc du lieu (Readers) | HOAN THANH | 5 readers + parser + schemas + database service |
 | 2 - LLM Integration va Prompts | Chua bat dau | Gemini/Groq client, prompt engineering |
 | 3 - Lop ghi du lieu va SchedulerAgent | Chua bat dau | Writers + pipeline len lich hang ngay |
 | 4 - TelegramAgent | Chua bat dau | Tuong tac 2 chieu, thong bao chu dong |
@@ -53,17 +53,20 @@
 
 ### Giai doan 1: Lop doc du lieu
 
-- [ ] models/schemas.py - Pydantic models
-- [ ] services/google_sheets.py - Doc Sheet + forward-fill merged cells
-- [ ] utils/sheet_parser.py - Xu ly merged cells
-- [ ] services/notion.py - Doc Notion databases
-- [ ] services/google_tasks.py - Doc Google Tasks
-- [ ] services/google_calendar.py - Doc Google Calendar
-- [ ] services/database.py - PostgreSQL connection + queries
-- [ ] tests/test_sheets.py
-- [ ] tests/test_notion.py
-- [ ] tests/test_tasks.py
-- [ ] tests/test_calendar.py
+- [x] models/schemas.py - 12 Pydantic models (TaskItem, NotionNote, GoogleTask, CalendarEvent, BehaviorStats, ...)
+- [x] services/database.py - asyncpg pool + CRUD + stats queries (Neon compatible)
+- [x] services/google_auth.py - OAuth 2.0 helper, 4 scopes, token refresh
+- [x] utils/sheet_parser.py - forward-fill merged cells + auto-detect column layout (2 layouts)
+- [x] services/google_sheets.py - Doc Sheet, 6 worksheets, 49 tasks
+- [x] services/google_tasks.py - Doc + ghi Google Tasks, 12 lists, 164 tasks
+- [x] services/google_calendar.py - Doc + ghi Google Calendar, 2 events
+- [x] services/notion.py - Doc Notion databases + pages, 1 db, 1 page
+- [x] main.py updated - DB pool init/close trong lifespan
+- [x] tests/test_database.py - OK
+- [x] tests/test_sheets.py - OK (49 tasks, 6 sheets)
+- [x] tests/test_tasks.py - OK (164 tasks, 12 lists)
+- [x] tests/test_calendar.py - OK (2 events)
+- [x] tests/test_notion.py - OK (1 database, 1 page)
 
 ### Giai doan 2: LLM Integration va Prompts
 
@@ -76,9 +79,9 @@
 
 ### Giai doan 3: Lop ghi du lieu va SchedulerAgent
 
-- [ ] services/google_tasks.py - Them cac ham write (create, update, delete)
-- [ ] services/google_calendar.py - Them cac ham write
-- [ ] services/database.py - Them cac ham write (save plan, log task, log agent)
+- [x] services/google_tasks.py - Cac ham write (create, complete, delete) - da lam trong GD1
+- [x] services/google_calendar.py - Cac ham write (create, update, delete) - da lam trong GD1
+- [x] services/database.py - Cac ham write (save plan, log task, log agent) - da lam trong GD1
 - [ ] agents/scheduler.py - SchedulerAgent hoan chinh
 - [ ] Dang ky APScheduler cron job 6:00 AM
 - [ ] tests/test_scheduler.py
@@ -138,6 +141,14 @@
 | 01/03/2026 | GD0: Push code len GitHub (mnhat19/zertdoo). Deploy Render. |
 | 01/03/2026 | GD0: Fix psycopg-binary build, fix PORT env var. Render /health OK. |
 | 01/03/2026 | GD0: UptimeRobot setup - ping /health moi 5 phut. Phase 0 HOAN THANH. |
+| 02/03/2026 | GD1: Tao models/schemas.py (12 Pydantic models), services/database.py (asyncpg pool). Test DB OK. |
+| 02/03/2026 | GD1: Tao services/google_auth.py. Re-auth OAuth voi 4 scopes moi. |
+| 02/03/2026 | GD1: Tao utils/sheet_parser.py. Phat hien 2 column layout khac nhau giua In_class va cac sheet khac. |
+| 02/03/2026 | GD1: Tao services/google_sheets.py - 6 worksheets, 49 tasks. Auto-detect column layout. |
+| 02/03/2026 | GD1: Tao services/google_tasks.py (read+write) - 12 lists, 164 tasks. |
+| 02/03/2026 | GD1: Tao services/google_calendar.py (read+write) - 2 events. |
+| 02/03/2026 | GD1: Tao services/notion.py - 1 database "Semester 2", 1 page. |
+| 02/03/2026 | GD1: Tat ca 5 readers test OK voi du lieu that. Phase 1 HOAN THANH. |
 
 ---
 
@@ -150,6 +161,9 @@
 | Neon PostgreSQL | Free vinh vien, 0.5GB, 191h compute/thang, serverless |
 | Gemini primary, Groq fallback | Gemini free tier lon (1500 req/ngay), context 1M tokens |
 | APScheduler | Cron trong process, khong can Celery/Redis, giam phuc tap |
+| asyncpg thay psycopg | Nhanh hon, native async, tuong thich Neon (sau khi strip channel_binding) |
+| Auto-detect column layout | In_class co 8 cot (them Deadlines), cac sheet khac 7 cot. Parser doc header row de xac dinh |
+| Write methods trong Phase 1 | Tasks + Calendar + DB write methods lam luon trong GD1 de tien test va GD3 chi can focus SchedulerAgent |
 
 ---
 
@@ -161,6 +175,9 @@
 | Koyeb cung yeu cau credit card | Doi sang Render |
 | psycopg[binary] khong build tren Render slim image | Doi sang psycopg-binary==3.2.4 (prebuilt) |
 | Render 503 - app bind sai port | Doi CMD dung `${PORT:-8000}` thay vi hardcode 8000 |
+| asyncpg khong ho tro channel_binding param | Strip channel_binding tu Neon DSN truoc khi connect |
+| OAuth invalid_scope (token cu thieu scopes) | Xoa token.json, re-auth voi 4 scopes day du |
+| Google Sheets parse sai data (In_class khac layout) | Tao detect_column_layout() doc header row, tu dong map cot |
 
 ## Van de dang gap
 
