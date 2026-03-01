@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 from config import settings, setup_google_credentials
 from services.database import init_pool, close_pool
@@ -207,6 +208,23 @@ async def trigger_evening_review():
     return {"status": "ok"}
 
 
+# === SyncAgent manual trigger ===
+@app.post("/api/sync/run")
+async def trigger_sync():
+    """Chay SyncAgent thu cong."""
+    from agents.sync import run as sync_run
+
+    try:
+        result = await sync_run()
+        return {"status": "ok", **result}
+    except Exception as e:
+        logger.error("Sync manual run loi: %s", e, exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"status": "error", "detail": str(e)},
+        )
+
+
 # === APScheduler setup ===
 def _setup_scheduler():
     """Dang ky cac cron jobs vao APScheduler."""
@@ -267,7 +285,18 @@ def _setup_scheduler():
 
         logger.info("Da dang ky 3 Telegram notification jobs (6:15, 12:00, 21:00)")
 
-    # TODO [Phase 5]: Them SyncAgent polling job (moi 15 phut)
+    # SyncAgent: polling moi 15 phut
+    from agents.sync import run_scheduled as sync_run_scheduled
+
+    scheduler.add_job(
+        sync_run_scheduled,
+        trigger=IntervalTrigger(minutes=15, timezone="Asia/Ho_Chi_Minh"),
+        id="sync_polling",
+        name="SyncAgent polling (15 min)",
+        replace_existing=True,
+    )
+    logger.info("Da dang ky SyncAgent polling moi 15 phut")
+
     # TODO [Phase 6]: Them ReportAgent cron (Chu nhat 20:00, ngay 1 hang thang 08:00)
 
 

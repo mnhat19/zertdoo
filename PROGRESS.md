@@ -14,7 +14,7 @@
 | 2 - LLM Integration va Prompts | HOAN THANH | Gemini 2.5 Flash + Groq Llama 3.1 8B, 3 prompts, retry + fallback |
 | 3 - Lop ghi du lieu va SchedulerAgent | HOAN THANH | SchedulerAgent full pipeline + APScheduler cron 6:00 AM |
 | 4 - TelegramAgent | HOAN THANH | Webhook + handle_message + 3 notification jobs + action execution |
-| 5 - SyncAgent | Chua bat dau | Dong bo trang thai giua cac nguon |
+| 5 - SyncAgent | HOAN THANH | Polling 15 phut, change detection, dong bo Tasks/Sheet -> Postgres, deadline alerts |
 | 6 - ReportAgent va Gmail | Chua bat dau | Bao cao dinh ky, gui email |
 | 7 - Deploy, Hardening, Dashboard | Chua bat dau | Systemd, monitoring, web UI |
 
@@ -109,12 +109,19 @@
 
 ### Giai doan 5: SyncAgent
 
-- [ ] agents/sync.py - SyncAgent
-- [ ] Change detection logic (so sanh snapshot)
-- [ ] Dong bo 2 chieu: Tasks <-> Sheet <-> Postgres
-- [ ] Conflict detection va thong bao
-- [ ] Canh bao task sap deadline
-- [ ] tests/test_sync.py
+- [x] agents/sync.py - SyncAgent hoan chinh (snapshot -> compare -> sync -> alert)
+- [x] Snapshot Google Tasks: 135 tasks tu tat ca lists
+- [x] Snapshot Google Sheets: 49 tasks tu tat ca worksheets
+- [x] Change detection: so sanh snapshot cu vs moi, phat hien completed/new/removed
+- [x] Dong bo completions vao Postgres task_logs (update_task_status)
+- [x] Canh bao deadline: Priority High, due trong 24h, chua done -> gui Telegram
+- [x] Thong bao thay doi quan trong qua Telegram
+- [x] Luu sync_states snapshot vao Postgres sau moi lan chay
+- [x] APScheduler IntervalTrigger moi 15 phut trong main.py
+- [x] Manual trigger endpoint: POST /api/sync/run
+- [x] Log agent_logs sau moi lan chay
+- [x] tests/test_sync.py - 2 lan chay OK (tao snapshot + so sanh)
+- [x] tests/test_sync_change.py - Mo phong tick completed -> phat hien 1 change, dong bo 1 task
 
 ### Giai doan 6: ReportAgent va Gmail
 
@@ -176,6 +183,10 @@
 | 01/03/2026 | GD4: Cap nhat main.py - webhook handler + 3 APScheduler notification jobs + 4 manual trigger endpoints. |
 | 01/03/2026 | GD4: Test OK: gui tin nhan, phan tich intent (query/reprioritize/add_task), morning summary. |
 | 01/03/2026 | GD4: Phase 4 HOAN THANH. |
+| 01/03/2026 | GD5: Tao agents/sync.py - snapshot Tasks + Sheets, change detection, dong bo Postgres, deadline alerts. |
+| 01/03/2026 | GD5: Cap nhat main.py - IntervalTrigger 15 phut + /api/sync/run endpoint. |
+| 01/03/2026 | GD5: Test OK: snapshot 135 Tasks + 49 Sheet tasks, phat hien 1 change khi tick completed, dong bo 1 task vao DB. |
+| 01/03/2026 | GD5: Phase 5 HOAN THANH. |
 
 ---
 
@@ -199,6 +210,8 @@
 | httpx cho Telegram API | Nhe hon python-telegram-bot, chi can gui tin nhan + webhook, khong can framework nang |
 | Background task cho webhook | asyncio.create_task xu ly tin nhan -> tra 200 OK ngay cho Telegram (tranh timeout) |
 | Webhook secret token | X-Telegram-Bot-Api-Secret-Token header xac thuc, tranh fake requests |
+| Snapshot-based sync | Luu JSON snapshot toan bo trang thai, so sanh cu-moi de phat hien diff, tranh polling tung task |
+| IntervalTrigger 15 phut | Can bang giua realtime va API quota, du nhanh cho use case ca nhan |
 
 ---
 
