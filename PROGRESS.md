@@ -11,7 +11,7 @@
 |---|---|---|
 | 0 - Ha tang va khung du an | HOAN THANH | Render + Neon + UptimeRobot da hoat dong |
 | 1 - Lop doc du lieu (Readers) | HOAN THANH | 5 readers + parser + schemas + database service |
-| 2 - LLM Integration va Prompts | Chua bat dau | Gemini/Groq client, prompt engineering |
+| 2 - LLM Integration va Prompts | HOAN THANH | Gemini 2.5 Flash + Groq Llama 3.1 8B, 3 prompts, retry + fallback |
 | 3 - Lop ghi du lieu va SchedulerAgent | Chua bat dau | Writers + pipeline len lich hang ngay |
 | 4 - TelegramAgent | Chua bat dau | Tuong tac 2 chieu, thong bao chu dong |
 | 5 - SyncAgent | Chua bat dau | Dong bo trang thai giua cac nguon |
@@ -70,12 +70,15 @@
 
 ### Giai doan 2: LLM Integration va Prompts
 
-- [ ] services/llm.py - Gemini + Groq client voi retry va fallback
-- [ ] prompts/scheduler.txt - System prompt SchedulerAgent
-- [ ] prompts/telegram.txt - System prompt TelegramAgent
-- [ ] prompts/report.txt - System prompt ReportAgent
-- [ ] Validation layer: parse + validate JSON tu LLM
-- [ ] tests/test_llm.py
+- [x] services/llm.py - Gemini (google-genai SDK) + Groq client, retry 3 lan, exponential backoff, auto fallback
+- [x] prompts/scheduler.txt - System prompt SchedulerAgent (uu tien, khung gio, reasoning)
+- [x] prompts/telegram.txt - System prompt TelegramAgent (9 intents, action params)
+- [x] prompts/report.txt - System prompt ReportAgent (bao cao tuan/thang)
+- [x] Validation layer: _extract_json + _parse_and_validate trong llm.py
+- [x] call_llm() - JSON output + Pydantic validation
+- [x] call_llm_text() - Plain text output (cho ReportAgent)
+- [x] tests/test_llm.py - 5 tests OK (extract, parse, Gemini JSON, Groq fallback, text)
+- [x] tests/test_scheduler_prompt.py - Test voi du lieu mau, output chat luong
 
 ### Giai doan 3: Lop ghi du lieu va SchedulerAgent
 
@@ -149,6 +152,12 @@
 | 02/03/2026 | GD1: Tao services/google_calendar.py (read+write) - 2 events. |
 | 02/03/2026 | GD1: Tao services/notion.py - 1 database "Semester 2", 1 page. |
 | 02/03/2026 | GD1: Tat ca 5 readers test OK voi du lieu that. Phase 1 HOAN THANH. |
+| 01/03/2026 | GD2: Tao services/llm.py - Gemini (google-genai) + Groq client, retry + fallback. |
+| 01/03/2026 | GD2: Tao 3 system prompts: scheduler.txt, telegram.txt, report.txt. |
+| 01/03/2026 | GD2: Test OK: Gemini JSON, Groq fallback, text mode, scheduler prompt voi du lieu mau. |
+| 01/03/2026 | Quyet dinh: Doi google-generativeai (deprecated) sang google-genai (SDK moi). |
+| 01/03/2026 | Quyet dinh: Doi model tu gemini-2.0-flash sang gemini-2.5-flash, groq tu llama-3.3-70b sang llama-3.1-8b-instant. |
+| 01/03/2026 | GD2: Phase 2 HOAN THANH. |
 
 ---
 
@@ -164,6 +173,9 @@
 | asyncpg thay psycopg | Nhanh hon, native async, tuong thich Neon (sau khi strip channel_binding) |
 | Auto-detect column layout | In_class co 8 cot (them Deadlines), cac sheet khac 7 cot. Parser doc header row de xac dinh |
 | Write methods trong Phase 1 | Tasks + Calendar + DB write methods lam luon trong GD1 de tien test va GD3 chi can focus SchedulerAgent |
+| google-genai thay google-generativeai | google-generativeai da deprecated, google-genai la SDK moi chinh thuc |
+| gemini-2.5-flash | Model moi nhat, ho tro JSON output tot, thinking mode |
+| llama-3.1-8b-instant (Groq fallback) | Nho, nhanh, du cho fallback, free tier cao |
 
 ---
 
@@ -178,6 +190,7 @@
 | asyncpg khong ho tro channel_binding param | Strip channel_binding tu Neon DSN truoc khi connect |
 | OAuth invalid_scope (token cu thieu scopes) | Xoa token.json, re-auth voi 4 scopes day du |
 | Google Sheets parse sai data (In_class khac layout) | Tao detect_column_layout() doc header row, tu dong map cot |
+| google-generativeai FutureWarning deprecated | Chuyen sang google-genai==1.65.0 (SDK moi) |
 
 ## Van de dang gap
 
