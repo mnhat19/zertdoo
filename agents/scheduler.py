@@ -53,7 +53,7 @@ def _collect_sheets_data() -> str:
         return read_sheets_summary()
     except Exception as e:
         logger.error("Loi doc Google Sheets: %s", e)
-        return f"[LOI] Khong doc duoc Google Sheets: {e}"
+        return f"[LỖI] Không đọc được Google Sheets: {e}"
 
 
 def _collect_tasks_data() -> str:
@@ -63,7 +63,7 @@ def _collect_tasks_data() -> str:
         return read_tasks_summary()
     except Exception as e:
         logger.error("Loi doc Google Tasks: %s", e)
-        return f"[LOI] Khong doc duoc Google Tasks: {e}"
+        return f"[LỖI] Không đọc được Google Tasks: {e}"
 
 
 def _collect_calendar_data() -> str:
@@ -73,7 +73,7 @@ def _collect_calendar_data() -> str:
         return read_calendar_summary(days=3)
     except Exception as e:
         logger.error("Loi doc Google Calendar: %s", e)
-        return f"[LOI] Khong doc duoc Google Calendar: {e}"
+        return f"[LỖI] Không đọc được Google Calendar: {e}"
 
 
 def _collect_notion_data() -> str:
@@ -83,7 +83,7 @@ def _collect_notion_data() -> str:
         return read_notion_summary(fetch_content=True)
     except Exception as e:
         logger.error("Loi doc Notion: %s", e)
-        return f"[LOI] Khong doc duoc Notion: {e}"
+        return f"[LỖI] Không đọc được Notion: {e}"
 
 
 async def _collect_db_data() -> str:
@@ -95,17 +95,17 @@ async def _collect_db_data() -> str:
             today_vn() - __import__("datetime").timedelta(days=1)
         )
 
-        lines = ["=== THONG KE HANH VI 30 NGAY ==="]
-        lines.append(f"- Tong tasks: {stats.get('total_tasks', 0)}")
-        lines.append(f"- Hoan thanh: {stats.get('completed_tasks', 0)}")
-        lines.append(f"- Bo qua: {stats.get('skipped_tasks', 0)}")
-        lines.append(f"- Doi lich: {stats.get('rescheduled_tasks', 0)}")
+        lines = ["=== THỐNG KÊ HÀNH VI 30 NGÀY ==="]
+        lines.append(f"- Tổng tasks: {stats.get('total_tasks', 0)}")
+        lines.append(f"- Hoàn thành: {stats.get('completed_tasks', 0)}")
+        lines.append(f"- Bỏ qua: {stats.get('skipped_tasks', 0)}")
+        lines.append(f"- Dời lịch: {stats.get('rescheduled_tasks', 0)}")
         cr = stats.get("completion_rate", 0)
-        lines.append(f"- Ti le hoan thanh: {cr:.0%}" if cr else "- Ti le hoan thanh: chua co du lieu")
-        lines.append(f"- Trung binh tasks/ngay: {stats.get('avg_tasks_per_day', 0):.1f}")
+        lines.append(f"- Tỉ lệ hoàn thành: {cr:.0%}" if cr else "- Tỉ lệ hoàn thành: chưa có dữ liệu")
+        lines.append(f"- Trung bình tasks/ngày: {stats.get('avg_tasks_per_day', 0):.1f}")
 
         if yesterday_plan:
-            lines.append("\n=== KE HOACH HOM QUA ===")
+            lines.append("\n=== KẾ HOẠCH HÔM QUA ===")
             plan_json = yesterday_plan.get("plan_json", {})
             if isinstance(plan_json, str):
                 import json
@@ -116,12 +116,12 @@ async def _collect_db_data() -> str:
                 slot = t.get("time_slot", "?")
                 lines.append(f"  - {slot}: {title}")
         else:
-            lines.append("\n(Khong co ke hoach hom qua)")
+            lines.append("\n(Không có kế hoạch hôm qua)")
 
         return "\n".join(lines)
     except Exception as e:
         logger.error("Loi doc database: %s", e)
-        return f"[LOI] Khong doc duoc database: {e}"
+        return f"[LỖI] Không đọc được database: {e}"
 
 
 # ============================================================
@@ -150,20 +150,20 @@ async def _build_context() -> str:
         sheets_task, tasks_task, calendar_task, notion_task, db_task
     )
 
-    context = f"""=== NGAY HOM NAY ===
+    context = f"""=== NGÀY HÔM NAY ===
 {weekday}, {format_date_vn(today)} ({today.strftime('%Y-%m-%d')})
-Gio hien tai: {now.strftime('%H:%M')}
+Giờ hiện tại: {now.strftime('%H:%M')}
 
-=== TASKS TU GOOGLE SHEET ===
+=== TASKS TỪ GOOGLE SHEET ===
 {sheets_data}
 
-=== TASKS TU GOOGLE TASKS ===
+=== TASKS TỪ GOOGLE TASKS ===
 {tasks_data}
 
-=== SU KIEN GOOGLE CALENDAR ===
+=== SỰ KIỆN GOOGLE CALENDAR ===
 {calendar_data}
 
-=== GHI CHU NOTION ===
+=== GHI CHÚ NOTION ===
 {notion_data}
 
 {db_data}
@@ -329,38 +329,38 @@ def _build_summary(plan: DailyPlanOutput, plan_date: date) -> str:
     """
     weekday = WEEKDAY_NAMES_FULL[plan_date.weekday()]
     lines = [
-        f"LICH NGAY {weekday.upper()} {format_date_vn(plan_date)}",
+        f"LỊCH NGÀY {weekday.upper()} {format_date_vn(plan_date)}",
         f"({plan_date.strftime('%Y-%m-%d')})",
         "",
     ]
 
     if plan.daily_tasks:
-        lines.append(f"--- {len(plan.daily_tasks)} NHIEM VU ---")
+        lines.append(f"--- {len(plan.daily_tasks)} NHIỆM VỤ ---")
         for t in sorted(plan.daily_tasks, key=lambda x: x.priority_rank):
             lines.append(f"{t.priority_rank}. [{t.time_slot}] {t.title} ({t.duration_minutes}p)")
             lines.append(f"   {t.reasoning}")
         lines.append("")
 
     if plan.events_to_create:
-        lines.append(f"--- SU KIEN MOI ---")
+        lines.append(f"--- SỰ KIỆN MỚI ---")
         for e in plan.events_to_create:
             lines.append(f"- {e.title}: {e.start} -> {e.end}")
         lines.append("")
 
     if plan.risks:
-        lines.append("--- CANH BAO ---")
+        lines.append("--- CẢNH BÁO ---")
         for r in plan.risks:
             lines.append(f"- {r}")
         lines.append("")
 
     if plan.questions_for_user:
-        lines.append("--- CAN XAC NHAN ---")
+        lines.append("--- CẦN XÁC NHẬN ---")
         for q in plan.questions_for_user:
             lines.append(f"- {q}")
         lines.append("")
 
     if plan.overall_reasoning:
-        lines.append("--- TONG THE ---")
+        lines.append("--- TỔNG THỂ ---")
         lines.append(plan.overall_reasoning)
 
     return "\n".join(lines)
@@ -461,7 +461,7 @@ def run_scheduled():
         try:
             from services.telegram_sender import send_message
             asyncio.run(send_message(
-                f"[LOI] SchedulerAgent that bai: {type(e).__name__}: {e}"
+                f"[LỖI] SchedulerAgent thất bại: {type(e).__name__}: {e}"
             ))
         except Exception:
             pass

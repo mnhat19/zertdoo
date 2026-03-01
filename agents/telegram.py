@@ -95,7 +95,7 @@ def _collect_tasks() -> str:
         return read_tasks_summary()
     except Exception as e:
         logger.error("Loi doc Google Tasks: %s", e)
-        return f"[LOI] Khong doc duoc: {e}"
+        return f"[LỖI] Không đọc được: {e}"
 
 
 def _collect_calendar() -> str:
@@ -105,7 +105,7 @@ def _collect_calendar() -> str:
         return read_calendar_summary(days=2)
     except Exception as e:
         logger.error("Loi doc Calendar: %s", e)
-        return f"[LOI] Khong doc duoc: {e}"
+        return f"[LỖI] Không đọc được: {e}"
 
 
 async def _collect_db_context() -> str:
@@ -124,7 +124,7 @@ async def _collect_db_context() -> str:
             if isinstance(plan_json, str):
                 plan_json = json.loads(plan_json)
 
-            lines.append("=== KE HOACH HOM NAY (tu SchedulerAgent) ===")
+            lines.append("=== KẾ HOẠCH HÔM NAY (từ SchedulerAgent) ===")
             tasks = plan_json.get("daily_tasks", [])
             for t in tasks:
                 title = t.get("title", "?")
@@ -134,23 +134,23 @@ async def _collect_db_context() -> str:
                 reasoning = t.get("reasoning", "")
                 lines.append(f"  {rank}. [{slot}] {title} ({dur}p)")
                 if reasoning:
-                    lines.append(f"     Ly do: {reasoning}")
+                    lines.append(f"     Lý do: {reasoning}")
 
             risks = plan_json.get("risks", [])
             if risks:
-                lines.append("\nCanh bao:")
+                lines.append("\nCảnh báo:")
                 for r in risks:
                     lines.append(f"  - {r}")
 
             overall = plan_json.get("overall_reasoning", "")
             if overall:
-                lines.append(f"\nTong the: {overall}")
+                lines.append(f"\nTổng thể: {overall}")
         else:
-            lines.append("=== CHUA CO KE HOACH HOM NAY ===")
-            lines.append("(SchedulerAgent chua chay hoac chua tao plan)")
+            lines.append("=== CHƯA CÓ KẾ HOẠCH HÔM NAY ===")
+            lines.append("(SchedulerAgent chưa chạy hoặc chưa tạo plan)")
 
         if recent_logs:
-            lines.append("\n=== TASK LOGS 3 NGAY GAN ===")
+            lines.append("\n=== TASK LOGS 3 NGÀY GẦN ===")
             for log in recent_logs[:15]:
                 name = log.get("task_name", "?")
                 status = log.get("status", "?")
@@ -160,7 +160,7 @@ async def _collect_db_context() -> str:
         return "\n".join(lines)
     except Exception as e:
         logger.error("Loi doc DB context: %s", e)
-        return f"[LOI] Khong doc duoc database: {e}"
+        return f"[LỖI] Không đọc được database: {e}"
 
 
 # ============================================================
@@ -254,11 +254,11 @@ async def _execute_actions(actions: list[TelegramAction]) -> list[str]:
 
             else:
                 logger.warning("Action type khong ho tro: %s", action_type)
-                action_logs.append(f"[SKIP] Khong ho tro: {action_type}")
+                action_logs.append(f"[Bỏ qua] Không hỗ trợ: {action_type}")
 
         except Exception as e:
             logger.error("Loi thuc thi action %s: %s", action_type, e)
-            action_logs.append(f"[LOI] {action_type}: {e}")
+            action_logs.append(f"[LỖI] {action_type}: {e}")
 
     return action_logs
 
@@ -271,7 +271,7 @@ async def _action_complete_task(params: dict, loop) -> str:
 
     task_title = params.get("task_title", "")
     if not task_title:
-        return "[SKIP] Khong co task_title"
+        return "[Bỏ qua] Không có task_title"
 
     # Tim task theo title
     def _find_and_complete():
@@ -281,8 +281,8 @@ async def _action_complete_task(params: dict, loop) -> str:
             for t in tasks:
                 if task_title.lower() in t.title.lower():
                     complete_task(tl["id"], t.task_id)
-                    return f"Da hoan thanh: {t.title}"
-        return f"Khong tim thay task: {task_title}"
+                    return f"Đã hoàn thành: {t.title}"
+        return f"Không tìm thấy task: {task_title}"
 
     result = await loop.run_in_executor(None, _find_and_complete)
 
@@ -310,7 +310,7 @@ async def _action_create_task(params: dict, loop) -> str:
     priority = params.get("priority", "Medium")
 
     if not title:
-        return "[SKIP] Khong co title"
+        return "[Bỏ qua] Không có title"
 
     today = today_vn()
     list_title = format_date_vn(today)
@@ -336,7 +336,7 @@ async def _action_create_task(params: dict, loop) -> str:
         notes += f"Priority: {priority}"
 
         created = create_task(task_list_id, title, notes=notes)
-        return f"Da tao task: {title} (id={created['id']})"
+        return f"Đã tạo task: {title} (id={created['id']})"
 
     result = await loop.run_in_executor(None, _create)
     logger.info("Action create_task: %s", result)
@@ -351,7 +351,7 @@ async def _action_delete_task(params: dict, loop) -> str:
 
     task_title = params.get("task_title", "")
     if not task_title:
-        return "[SKIP] Khong co task_title"
+        return "[Bỏ qua] Không có task_title"
 
     def _find_and_delete():
         lists = get_all_task_lists()
@@ -360,8 +360,8 @@ async def _action_delete_task(params: dict, loop) -> str:
             for t in tasks:
                 if task_title.lower() in t.title.lower():
                     delete_task(tl["id"], t.task_id)
-                    return f"Da xoa: {t.title}"
-        return f"Khong tim thay task: {task_title}"
+                    return f"Đã xóa: {t.title}"
+        return f"Không tìm thấy task: {task_title}"
 
     result = await loop.run_in_executor(None, _find_and_delete)
     logger.info("Action delete_task: %s", result)
@@ -385,7 +385,7 @@ async def _action_update_task(params: dict, loop) -> str:
     except Exception:
         pass
 
-    return f"Da ghi nhan thay doi: {task_title} - {field} = {new_value}"
+    return f"Đã ghi nhận thay đổi: {task_title} - {field} = {new_value}"
 
 
 async def _action_create_event(params: dict, loop) -> str:
@@ -398,13 +398,13 @@ async def _action_create_event(params: dict, loop) -> str:
     description = params.get("description", "")
 
     if not title or not start or not end:
-        return f"[SKIP] Thieu thong tin event: title={title}, start={start}, end={end}"
+        return f"[Bỏ qua] Thiếu thông tin event: title={title}, start={start}, end={end}"
 
     def _create():
         result = create_event(
             summary=title, start=start, end=end, description=description
         )
-        return f"Da tao event: {title} (id={result['id']})"
+        return f"Đã tạo event: {title} (id={result['id']})"
 
     result = await loop.run_in_executor(None, _create)
     logger.info("Action create_event: %s", result)
@@ -416,13 +416,13 @@ async def _action_update_event(params: dict, loop) -> str:
     event_title = params.get("event_title", "")
     field = params.get("field", "")
     new_value = params.get("new_value", "")
-    return f"Da ghi nhan thay doi event: {event_title} - {field} = {new_value}"
+    return f"Đã ghi nhận thay đổi event: {event_title} - {field} = {new_value}"
 
 
 async def _action_delete_event(params: dict, loop) -> str:
     """Xoa event tu Calendar (can event_id)."""
     event_title = params.get("event_title", "")
-    return f"Da ghi nhan yeu cau xoa event: {event_title}"
+    return f"Đã ghi nhận yêu cầu xóa event: {event_title}"
 
 
 async def _action_reschedule_plan(params: dict) -> str:
@@ -441,12 +441,12 @@ async def _action_reschedule_plan(params: dict) -> str:
 
         # Gui summary moi
         await send_message(
-            f"DA SAP XEP LAI LICH:\n\n{summary}"
+            f"ĐÃ SẮP XẾP LẠI LỊCH:\n\n{summary}"
         )
-        return f"Da reschedule: {len(result['plan'].daily_tasks)} tasks"
+        return f"Đã sắp xếp lại: {len(result['plan'].daily_tasks)} tasks"
     except Exception as e:
         logger.error("Loi reschedule: %s", e)
-        return f"[LOI] Reschedule that bai: {e}"
+        return f"[LỖI] Reschedule thất bại: {e}"
 
 
 # ============================================================
@@ -470,7 +470,7 @@ async def handle_message(message_text: str, chat_id: str) -> str:
     # 1. Kiem tra quyen
     if str(chat_id) != str(settings.telegram_allowed_chat_id):
         logger.warning("Chat ID khong duoc phep: %s", chat_id)
-        await send_message("Khong co quyen su dung bot nay.", chat_id=chat_id)
+        await send_message("Không có quyền sử dụng bot này.", chat_id=chat_id)
         return "Unauthorized"
 
     try:
@@ -513,7 +513,7 @@ async def handle_message(message_text: str, chat_id: str) -> str:
 
     except Exception as e:
         logger.error("Loi xu ly tin nhan: %s", e, exc_info=True)
-        error_msg = f"Loi he thong khi xu ly yeu cau. Vui long thu lai. ({type(e).__name__})"
+        error_msg = f"Lỗi hệ thống khi xử lý yêu cầu. Vui lòng thử lại. ({type(e).__name__})"
         await send_message(error_msg)
         return error_msg
 
@@ -537,8 +537,8 @@ async def send_morning_summary():
 
         if not plan:
             await send_message(
-                f"SANG {format_date_vn(today)}\n\n"
-                "Chua co ke hoach hom nay. SchedulerAgent co the chua chay."
+                f"SÁNG {format_date_vn(today)}\n\n"
+                "Chưa có kế hoạch hôm nay. SchedulerAgent có thể chưa chạy."
             )
             return
 
@@ -548,13 +548,13 @@ async def send_morning_summary():
 
         weekday = WEEKDAY_NAMES_FULL[today.weekday()]
         lines = [
-            f"LICH {weekday.upper()} {format_date_vn(today)}",
+            f"LỊCH {weekday.upper()} {format_date_vn(today)}",
             "",
         ]
 
         tasks = plan_json.get("daily_tasks", [])
         if tasks:
-            lines.append(f"--- {len(tasks)} NHIEM VU ---")
+            lines.append(f"--- {len(tasks)} NHIỆM VỤ ---")
             for t in sorted(tasks, key=lambda x: x.get("priority_rank", 99)):
                 rank = t.get("priority_rank", "?")
                 slot = t.get("time_slot", "?")
@@ -564,13 +564,13 @@ async def send_morning_summary():
 
         risks = plan_json.get("risks", [])
         if risks:
-            lines.append("\n--- LUU Y ---")
+            lines.append("\n--- LƯU Ý ---")
             for r in risks:
                 lines.append(f"- {r}")
 
         questions = plan_json.get("questions_for_user", [])
         if questions:
-            lines.append("\n--- CAN XAC NHAN ---")
+            lines.append("\n--- CẦN XÁC NHẬN ---")
             for q in questions:
                 lines.append(f"- {q}")
 
@@ -616,15 +616,15 @@ async def send_afternoon_reminder():
         if not afternoon_tasks:
             # Khong co task buoi chieu -> thong bao tat ca tasks con lai
             await send_message(
-                f"GIUA NGAY {format_date_vn(today)}\n\n"
-                "Khong co nhiem vu buoi chieu duoc len lich."
+                f"GIỮA NGÀY {format_date_vn(today)}\n\n"
+                "Không có nhiệm vụ buổi chiều được lên lịch."
             )
             return
 
         lines = [
-            f"GIUA NGAY {format_date_vn(today)}",
+            f"GIỮA NGÀY {format_date_vn(today)}",
             f"",
-            f"--- {len(afternoon_tasks)} NHIEM VU BUOI CHIEU ---",
+            f"--- {len(afternoon_tasks)} NHIỆM VỤ BUỔI CHIỀU ---",
         ]
         for t in sorted(afternoon_tasks, key=lambda x: x.get("priority_rank", 99)):
             rank = t.get("priority_rank", "?")
@@ -634,7 +634,7 @@ async def send_afternoon_reminder():
             lines.append(f"{rank}. [{slot}] {title} ({dur}p)")
 
         lines.append("")
-        lines.append("Phan hoi neu can dieu chinh.")
+        lines.append("Phản hồi nếu cần điều chỉnh.")
 
         await send_message("\n".join(lines))
         logger.info("Da gui nhac buoi chieu")
@@ -682,27 +682,27 @@ async def send_evening_review():
                 remaining_tasks.append(t)
 
         lines = [
-            f"TONG KET NGAY {format_date_vn(today)}",
+            f"TỔNG KẾT NGÀY {format_date_vn(today)}",
             "",
         ]
 
         if done_tasks:
-            lines.append(f"--- DA HOAN THANH ({len(done_tasks)}/{total}) ---")
+            lines.append(f"--- ĐÃ HOÀN THÀNH ({len(done_tasks)}/{total}) ---")
             for t in done_tasks:
                 lines.append(f"  [x] {t.get('title', '?')}")
 
         if remaining_tasks:
-            lines.append(f"\n--- CHUA XONG ({len(remaining_tasks)}/{total}) ---")
+            lines.append(f"\n--- CHƯA XONG ({len(remaining_tasks)}/{total}) ---")
             for t in remaining_tasks:
                 slot = t.get("time_slot", "?")
                 lines.append(f"  [ ] [{slot}] {t.get('title', '?')}")
 
         if remaining_tasks:
-            lines.append("\nNhung task chua xong se duoc xem xet lai ngay mai.")
-            lines.append("Nhan tin neu muon dieu chinh.")
+            lines.append("\nNhững task chưa xong sẽ được xem xét lại ngày mai.")
+            lines.append("Nhắn tin nếu muốn điều chỉnh.")
 
         if not done_tasks and not remaining_tasks:
-            lines.append("Khong co du lieu de tong ket.")
+            lines.append("Không có dữ liệu để tổng kết.")
 
         await send_message("\n".join(lines))
         logger.info("Da gui review cuoi ngay")

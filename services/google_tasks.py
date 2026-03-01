@@ -129,7 +129,7 @@ def read_tasks_summary() -> str:
     all_tasks = read_all_tasks()
 
     if not all_tasks:
-        return "Khong co task nao trong Google Tasks."
+        return "Không có task nào trong Google Tasks."
 
     # Nhom theo task list
     by_list: dict[str, list[GoogleTask]] = {}
@@ -139,7 +139,7 @@ def read_tasks_summary() -> str:
     lines = []
     for list_title, tasks in by_list.items():
         pending = [t for t in tasks if t.status == "needsAction"]
-        lines.append(f"\n[{list_title}] ({len(tasks)} tasks, {len(pending)} chua xong)")
+        lines.append(f"\n[{list_title}] ({len(tasks)} tasks, {len(pending)} chưa xong)")
         for t in tasks:
             status_mark = "[x]" if t.status == "completed" else "[ ]"
             due_str = f" | Due: {t.due[:10]}" if t.due else ""

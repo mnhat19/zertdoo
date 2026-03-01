@@ -21,13 +21,13 @@ WEEKDAY_NAMES = {
 }
 
 WEEKDAY_NAMES_FULL = {
-    0: "Thu Hai",
-    1: "Thu Ba",
-    2: "Thu Tu",
-    3: "Thu Nam",
-    4: "Thu Sau",
-    5: "Thu Bay",
-    6: "Chu Nhat",
+    0: "Thứ Hai",
+    1: "Thứ Ba",
+    2: "Thứ Tư",
+    3: "Thứ Năm",
+    4: "Thứ Sáu",
+    5: "Thứ Bảy",
+    6: "Chủ Nhật",
 }
 
 

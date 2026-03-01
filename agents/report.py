@@ -65,7 +65,7 @@ async def _collect_weekly_data() -> dict:
     # Phan loai theo category
     by_category = {}
     for l in logs:
-        cat = l.get("category") or l.get("sheet_name") or "Khong phan loai"
+        cat = l.get("category") or l.get("sheet_name") or "Không phân loại"
         by_category.setdefault(cat, {"total": 0, "done": 0})
         by_category[cat]["total"] += 1
         if l.get("status") == "done":
@@ -83,7 +83,7 @@ async def _collect_weekly_data() -> dict:
                 by_date[key]["done"] += 1
 
     return {
-        "period": "tuan",
+        "period": "tuần",
         "start_date": str(start_date),
         "end_date": str(today),
         "total_tasks": total,
@@ -116,7 +116,7 @@ async def _collect_monthly_data() -> dict:
 
     by_category = {}
     for l in logs:
-        cat = l.get("category") or l.get("sheet_name") or "Khong phan loai"
+        cat = l.get("category") or l.get("sheet_name") or "Không phân loại"
         by_category.setdefault(cat, {"total": 0, "done": 0})
         by_category[cat]["total"] += 1
         if l.get("status") == "done":
@@ -128,7 +128,7 @@ async def _collect_monthly_data() -> dict:
         d = l.get("scheduled_date")
         if d:
             week_num = (d - start_date).days // 7 + 1
-            key = f"Tuan {week_num}"
+            key = f"Tuần {week_num}"
             by_week.setdefault(key, {"total": 0, "done": 0})
             by_week[key]["total"] += 1
             if l.get("status") == "done":
@@ -145,7 +145,7 @@ async def _collect_monthly_data() -> dict:
                 by_date[key]["done"] += 1
 
     return {
-        "period": "thang",
+        "period": "tháng",
         "start_date": str(start_date),
         "end_date": str(today),
         "total_tasks": total,
@@ -170,12 +170,12 @@ async def _generate_report(data: dict) -> str:
     import json
 
     system_prompt = _load_prompt()
-    user_content = f"""Du lieu thong ke {data['period']}:
-Tu {data['start_date']} den {data['end_date']}
+    user_content = f"""Dữ liệu thống kê {data['period']}:
+Từ {data['start_date']} đến {data['end_date']}
 
 {json.dumps(data, ensure_ascii=False, indent=2, default=str)}
 
-Viet bao cao {data['period']} dua tren du lieu tren.
+Viết báo cáo {data['period']} dựa trên dữ liệu trên.
 """
 
     report_text = await call_llm_text(
@@ -246,8 +246,8 @@ async def run_weekly_report() -> dict:
     report_text = await _generate_report(data)
 
     # 3. Xac dinh subject
-    subject = f"[Zertdoo] Bao cao tuan {format_date_vn(start)} - {format_date_vn(today)}"
-    title = f"Bao cao tuan {format_date_vn(start)} - {format_date_vn(today)}"
+    subject = f"[Zertdoo] Báo cáo tuần {format_date_vn(start)} - {format_date_vn(today)}"
+    title = f"Báo cáo tuần {format_date_vn(start)} - {format_date_vn(today)}"
 
     # 4. Gui email
     logger.info("Gui email...")
@@ -259,7 +259,7 @@ async def run_weekly_report() -> dict:
             from services.telegram_sender import send_message
             summary = report_text[:2000] if len(report_text) > 2000 else report_text
             await send_message(
-                f"BAO CAO TUAN da gui qua email.\n\n---\n\n{summary}"
+                f"BÁO CÁO TUẦN đã gửi qua email.\n\n---\n\n{summary}"
             )
         except Exception as e:
             logger.error("Loi gui Telegram: %s", e)
@@ -307,8 +307,8 @@ async def run_monthly_report() -> dict:
     report_text = await _generate_report(data)
 
     # 3. Gui email
-    subject = f"[Zertdoo] Bao cao thang {month_str}"
-    title = f"Bao cao thang {month_str}"
+    subject = f"[Zertdoo] Báo cáo tháng {month_str}"
+    title = f"Báo cáo tháng {month_str}"
 
     logger.info("Gui email...")
     email_result = await _send_report_email(report_text, subject, title)
@@ -319,7 +319,7 @@ async def run_monthly_report() -> dict:
             from services.telegram_sender import send_message
             summary = report_text[:2000] if len(report_text) > 2000 else report_text
             await send_message(
-                f"BAO CAO THANG da gui qua email.\n\n---\n\n{summary}"
+                f"BÁO CÁO THÁNG đã gửi qua email.\n\n---\n\n{summary}"
             )
         except Exception as e:
             logger.error("Loi gui Telegram: %s", e)
@@ -359,7 +359,7 @@ def run_weekly_scheduled():
         try:
             from services.telegram_sender import send_message
             asyncio.run(send_message(
-                f"[LOI] ReportAgent tuan that bai: {type(e).__name__}: {e}"
+                f"[LỖI] ReportAgent tuần thất bại: {type(e).__name__}: {e}"
             ))
         except Exception:
             pass
@@ -376,7 +376,7 @@ def run_monthly_scheduled():
         try:
             from services.telegram_sender import send_message
             asyncio.run(send_message(
-                f"[LOI] ReportAgent thang that bai: {type(e).__name__}: {e}"
+                f"[LỖI] ReportAgent tháng thất bại: {type(e).__name__}: {e}"
             ))
         except Exception:
             pass

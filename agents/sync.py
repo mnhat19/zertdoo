@@ -330,17 +330,17 @@ async def _check_deadline_alerts(sheets_snapshot: dict):
             days_left = (due_date - today).days
 
             if days_left < 0:
-                urgency = f"QUA HAN {abs(days_left)} NGAY"
+                urgency = f"QUÁ HẠN {abs(days_left)} NGÀY"
             elif days_left == 0:
-                urgency = "DEN HAN HOM NAY"
+                urgency = "ĐẾN HẠN HÔM NAY"
             else:
-                urgency = f"CON {days_left} NGAY"
+                urgency = f"CÒN {days_left} NGÀY"
 
             alerts.append(f"- [{sheet_name}] {task_name} ({urgency})")
 
     if alerts:
         from services.telegram_sender import send_message
-        msg = "CANH BAO DEADLINE (Priority High):\n\n" + "\n".join(alerts)
+        msg = "CẢNH BÁO DEADLINE (Priority High):\n\n" + "\n".join(alerts)
         await send_message(msg)
         logger.info("Da gui %d canh bao deadline", len(alerts))
 
@@ -479,7 +479,7 @@ async def _notify_changes(changes: list[dict]):
     """Gui Telegram thong bao ve cac thay doi quan trong."""
     from services.telegram_sender import send_message
 
-    lines = ["DONG BO - Phat hien thay doi:\n"]
+    lines = ["ĐỒNG BỘ - Phát hiện thay đổi:\n"]
 
     for c in changes[:10]:  # Gioi han 10 thay doi moi lan
         task = c["task"]
@@ -488,16 +488,16 @@ async def _notify_changes(changes: list[dict]):
 
         if ctype == "completed":
             name = task.get("title", "") or task.get("task", "?")
-            lines.append(f"[x] {name} (tu {source})")
+            lines.append(f"[x] {name} (từ {source})")
         elif ctype == "new_task":
             name = task.get("title", "") or task.get("task", "?")
-            lines.append(f"[+] {name} (them moi tu {source})")
+            lines.append(f"[+] {name} (thêm mới từ {source})")
         elif ctype == "removed":
             name = task.get("title", "") or task.get("task", "?")
-            lines.append(f"[-] {name} (xoa tu {source})")
+            lines.append(f"[-] {name} (xóa từ {source})")
 
     if len(changes) > 10:
-        lines.append(f"\n... va {len(changes) - 10} thay doi khac")
+        lines.append(f"\n... và {len(changes) - 10} thay đổi khác")
 
     await send_message("\n".join(lines))
     logger.info("Da gui thong bao %d thay doi qua Telegram", len(changes))
@@ -519,7 +519,7 @@ def run_scheduled():
         try:
             from services.telegram_sender import send_message
             asyncio.run(send_message(
-                f"[LOI] SyncAgent that bai: {type(e).__name__}: {e}"
+                f"[LỖI] SyncAgent thất bại: {type(e).__name__}: {e}"
             ))
         except Exception:
             pass

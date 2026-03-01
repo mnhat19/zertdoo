@@ -66,7 +66,7 @@ def get_upcoming_events(
 
         events.append(CalendarEvent(
             event_id=item["id"],
-            summary=item.get("summary", "(Khong co tieu de)"),
+            summary=item.get("summary", "(Không có tiêu đề)"),
             description=item.get("description", ""),
             start=start_str,
             end=end_str,
@@ -94,9 +94,9 @@ def read_calendar_summary(days: int = 7) -> str:
     events = get_upcoming_events(days=days)
 
     if not events:
-        return f"Khong co su kien nao trong {days} ngay toi."
+        return f"Không có sự kiện nào trong {days} ngày tới."
 
-    lines = [f"Su kien trong {days} ngay toi ({len(events)} su kien):"]
+    lines = [f"Sự kiện trong {days} ngày tới ({len(events)} sự kiện):"]
 
     # Nhom theo ngay
     by_date: dict[str, list[CalendarEvent]] = {}
@@ -109,7 +109,7 @@ def read_calendar_summary(days: int = 7) -> str:
         lines.append(f"\n  {date_str}:")
         for e in day_events:
             if e.is_all_day:
-                time_str = "Ca ngay"
+                time_str = "Cả ngày"
             else:
                 # Lay phan gio tu ISO datetime
                 start_time = e.start[11:16] if len(e.start) > 11 else ""

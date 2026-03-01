@@ -121,7 +121,7 @@ def read_sheets_summary(spreadsheet_id: str = None) -> str:
     all_tasks = read_all_sheets(spreadsheet_id)
 
     if not all_tasks:
-        return "Khong co task nao trong Google Sheet."
+        return "Không có task nào trong Google Sheet."
 
     # Nhom theo sheet_name
     by_sheet: dict[str, list[TaskItem]] = {}
@@ -131,7 +131,7 @@ def read_sheets_summary(spreadsheet_id: str = None) -> str:
     lines = []
     for sheet_name, tasks in by_sheet.items():
         pending = [t for t in tasks if t.status.lower() not in ("done",)]
-        lines.append(f"\n[{sheet_name}] ({len(tasks)} tasks, {len(pending)} chua xong)")
+        lines.append(f"\n[{sheet_name}] ({len(tasks)} tasks, {len(pending)} chưa xong)")
         for t in tasks:
             status_mark = "[x]" if t.status.lower() == "done" else "[ ]"
             due_str = f" | Due: {t.due_date}" if t.due_date else ""

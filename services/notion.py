@@ -39,7 +39,7 @@ def get_all_databases() -> list[dict]:
     databases = []
     for item in results.get("results", []):
         title_arr = item.get("title", [])
-        title = title_arr[0].get("plain_text", "") if title_arr else "(Khong co ten)"
+        title = title_arr[0].get("plain_text", "") if title_arr else "(Không có tên)"
         databases.append({
             "id": item["id"],
             "title": title,
@@ -57,7 +57,7 @@ def _extract_page_title(page: dict) -> str:
             title_arr = prop_data.get("title", [])
             if title_arr:
                 return "".join(t.get("plain_text", "") for t in title_arr)
-    return "(Khong co tieu de)"
+    return "(Không có tiêu đề)"
 
 
 def _extract_page_properties(page: dict) -> dict:
@@ -238,7 +238,7 @@ def read_notion_summary(fetch_content: bool = True) -> str:
     all_notes = read_all_notes(fetch_content=fetch_content)
 
     if not all_notes:
-        return "Khong co notes nao trong Notion."
+        return "Không có notes nào trong Notion."
 
     # Nhom theo database
     by_db: dict[str, list[NotionNote]] = {}

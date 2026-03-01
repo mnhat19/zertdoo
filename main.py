@@ -180,7 +180,7 @@ async def trigger_scheduler():
 async def test_telegram_message():
     """Gui tin nhan test den Telegram."""
     from services.telegram_sender import send_message
-    results = await send_message("Zertdoo test: he thong dang hoat dong.")
+    results = await send_message("Zertdoo test: hệ thống đang hoạt động.")
     return {"status": "ok", "messages_sent": len(results)}
 
 

@@ -150,7 +150,7 @@ def format_report_html(report_text: str, title: str) -> str:
         stripped = line.strip()
         if not stripped:
             html_lines.append("<br>")
-        elif stripped.startswith("BAO CAO"):
+        elif stripped.startswith("BAO CAO") or stripped.startswith("BÁO CÁO"):
             html_lines.append(f'<h2 style="color:#1a1a2e;border-bottom:2px solid #16213e;padding-bottom:8px;">{stripped}</h2>')
         elif stripped[0].isdigit() and "." in stripped[:3]:
             # Muc lon: "1. TONG QUAN", "2. PHAN TICH", ...
@@ -197,7 +197,7 @@ p, li {{ font-size: 14px; }}
 <div class="container">
 {body}
 <div class="footer">
-Bao cao duoc tao tu dong boi Zertdoo - He thong AI Agent ca nhan.
+Báo cáo được tạo tự động bởi Zertdoo - Hệ thống AI Agent cá nhân.
 </div>
 </div>
 </body>
