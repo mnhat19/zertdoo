@@ -9,7 +9,7 @@
 
 | Giai doan | Trang thai | Ghi chu |
 |---|---|---|
-| 0 - Ha tang va khung du an | DANG LAM | Code local xong, cho Render + Neon PostgreSQL |
+| 0 - Ha tang va khung du an | HOAN THANH | Render + Neon + UptimeRobot da hoat dong |
 | 1 - Lop doc du lieu (Readers) | Chua bat dau | Google Sheets, Notion, Tasks, Calendar, Postgres readers |
 | 2 - LLM Integration va Prompts | Chua bat dau | Gemini/Groq client, prompt engineering |
 | 3 - Lop ghi du lieu va SchedulerAgent | Chua bat dau | Writers + pipeline len lich hang ngay |
@@ -24,13 +24,13 @@
 
 ### Giai doan 0: Ha tang va khung du an
 
-- [ ] Dang ky Neon (neon.tech) - tao PostgreSQL database
-- [ ] Chay init_db.sql tren Neon
+- [x] Dang ky Neon (neon.tech) - tao PostgreSQL database (Singapore, PostgreSQL 17.8)
+- [x] Chay init_db.sql tren Neon (5 bang: task_logs, behavior_logs, agent_logs, daily_plans, sync_states)
 - [x] Tao Dockerfile cho deploy
 - [x] Tao render.yaml (Render blueprint)
-- [ ] Dang ky Render (render.com) bang GitHub
-- [ ] Deploy len Render tu GitHub repo
-- [ ] Dang ky UptimeRobot - ping /health moi 5 phut
+- [x] Dang ky Render (render.com) bang GitHub
+- [x] Deploy len Render tu GitHub repo - /health tra ve OK
+- [x] Dang ky UptimeRobot - ping /health moi 5 phut
 - [x] Khoi tao cau truc project (agents/, services/, models/, prompts/, utils/, tests/, scripts/, credentials/)
 - [x] Tao requirements.txt (18 packages)
 - [x] Tao config.py (Pydantic Settings, doc .env, singleton)
@@ -47,8 +47,9 @@
 - [x] Cap nhat main.py: goi setup_google_credentials khi khoi dong
 - [x] Cap nhat .env.example: them bien base64 cho cloud deploy
 - [x] Tao render.yaml (Render blueprint)
-- [ ] Cau hinh bien moi truong tren Render
-- [ ] Kiem tra: FastAPI /health qua URL cong khai Render
+- [x] Cau hinh bien moi truong tren Render (DATABASE_URL)
+- [x] Kiem tra: FastAPI /health qua URL cong khai Render -> OK
+- [x] Fix PORT env var: Render dung $PORT dong, khong hardcode 8000
 
 ### Giai doan 1: Lop doc du lieu
 
@@ -133,6 +134,10 @@
 | 01/03/2026 | GD0: Tao Dockerfile, cap nhat config.py cho cloud (base64 credentials). |
 | 01/03/2026 | Quyet dinh: Koyeb cung yeu cau credit card. Doi sang Render + Neon + UptimeRobot. |
 | 01/03/2026 | GD0: Tao render.yaml, cap nhat PLAN.md cho Render. |
+| 01/03/2026 | GD0: Dang ky Neon, test connection OK, chay init_db.sql (5 bang). |
+| 01/03/2026 | GD0: Push code len GitHub (mnhat19/zertdoo). Deploy Render. |
+| 01/03/2026 | GD0: Fix psycopg-binary build, fix PORT env var. Render /health OK. |
+| 01/03/2026 | GD0: UptimeRobot setup - ping /health moi 5 phut. Phase 0 HOAN THANH. |
 
 ---
 
@@ -147,6 +152,15 @@
 | APScheduler | Cron trong process, khong can Celery/Redis, giam phuc tap |
 
 ---
+
+## Van de da giai quyet
+
+| Van de | Giai phap |
+|---|---|
+| Oracle Cloud yeu cau credit card | Doi sang Render + Neon + UptimeRobot |
+| Koyeb cung yeu cau credit card | Doi sang Render |
+| psycopg[binary] khong build tren Render slim image | Doi sang psycopg-binary==3.2.4 (prebuilt) |
+| Render 503 - app bind sai port | Doi CMD dung `${PORT:-8000}` thay vi hardcode 8000 |
 
 ## Van de dang gap
 
