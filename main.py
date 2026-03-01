@@ -225,6 +225,49 @@ async def trigger_sync():
         )
 
 
+# === ReportAgent manual triggers ===
+@app.post("/api/report/weekly")
+async def trigger_weekly_report():
+    """Chay bao cao tuan thu cong."""
+    from agents.report import run_weekly_report
+
+    try:
+        result = await run_weekly_report()
+        return {
+            "status": "ok",
+            "type": result["type"],
+            "email_id": result.get("email_id"),
+            "report_length": result["report_length"],
+        }
+    except Exception as e:
+        logger.error("Weekly report loi: %s", e, exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"status": "error", "detail": str(e)},
+        )
+
+
+@app.post("/api/report/monthly")
+async def trigger_monthly_report():
+    """Chay bao cao thang thu cong."""
+    from agents.report import run_monthly_report
+
+    try:
+        result = await run_monthly_report()
+        return {
+            "status": "ok",
+            "type": result["type"],
+            "email_id": result.get("email_id"),
+            "report_length": result["report_length"],
+        }
+    except Exception as e:
+        logger.error("Monthly report loi: %s", e, exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"status": "error", "detail": str(e)},
+        )
+
+
 # === APScheduler setup ===
 def _setup_scheduler():
     """Dang ky cac cron jobs vao APScheduler."""
@@ -297,7 +340,34 @@ def _setup_scheduler():
     )
     logger.info("Da dang ky SyncAgent polling moi 15 phut")
 
-    # TODO [Phase 6]: Them ReportAgent cron (Chu nhat 20:00, ngay 1 hang thang 08:00)
+    # ReportAgent cron jobs
+    from agents.report import run_weekly_scheduled, run_monthly_scheduled
+
+    # Chu nhat 20:00: bao cao tuan
+    scheduler.add_job(
+        run_weekly_scheduled,
+        trigger=CronTrigger(
+            day_of_week="sun", hour=20, minute=0,
+            timezone="Asia/Ho_Chi_Minh",
+        ),
+        id="report_weekly",
+        name="ReportAgent weekly (Sun 20:00)",
+        replace_existing=True,
+    )
+
+    # Ngay 1 hang thang 08:00: bao cao thang
+    scheduler.add_job(
+        run_monthly_scheduled,
+        trigger=CronTrigger(
+            day=1, hour=8, minute=0,
+            timezone="Asia/Ho_Chi_Minh",
+        ),
+        id="report_monthly",
+        name="ReportAgent monthly (1st 08:00)",
+        replace_existing=True,
+    )
+
+    logger.info("Da dang ky ReportAgent cron: tuan (CN 20:00), thang (ngay 1 08:00)")
 
 
 # === Chay truc tiep ===

@@ -15,7 +15,7 @@
 | 3 - Lop ghi du lieu va SchedulerAgent | HOAN THANH | SchedulerAgent full pipeline + APScheduler cron 6:00 AM |
 | 4 - TelegramAgent | HOAN THANH | Webhook + handle_message + 3 notification jobs + action execution |
 | 5 - SyncAgent | HOAN THANH | Polling 15 phut, change detection, dong bo Tasks/Sheet -> Postgres, deadline alerts |
-| 6 - ReportAgent va Gmail | Chua bat dau | Bao cao dinh ky, gui email |
+| 6 - ReportAgent va Gmail | HOAN THANH | Gmail API + ReportAgent + cron tuan/thang |
 | 7 - Deploy, Hardening, Dashboard | Chua bat dau | Systemd, monitoring, web UI |
 
 ---
@@ -125,12 +125,18 @@
 
 ### Giai doan 6: ReportAgent va Gmail
 
-- [ ] services/gmail.py - Gui email voi attachment
-- [ ] agents/report.py - ReportAgent
-- [ ] Template bao cao tuan (HTML)
-- [ ] Template bao cao thang (HTML)
-- [ ] Cron: Chu nhat 8:00 PM, ngay 1 hang thang 8:00 AM
-- [ ] tests/test_report.py
+- [x] services/gmail.py - Gmail API sender (OAuth 2.0, scope gmail.send), send_email + format_report_html
+- [x] agents/report.py - ReportAgent hoan chinh (collect data -> LLM -> format HTML -> send email -> Telegram notify -> log)
+- [x] format_report_html: chuyen plain text -> HTML voi CSS inline (heading detection, list items, paragraphs)
+- [x] _build_mime_message: MIME multipart + attachment (year_vision.jpg neu co)
+- [x] _collect_weekly_data: query 7 ngay, phan loai theo category/date/status
+- [x] _collect_monthly_data: query 30 ngay, phan loai theo category/week/date/status
+- [x] run_weekly_report: full pipeline tuan (data -> LLM report.txt prompt -> HTML -> email -> Telegram)
+- [x] run_monthly_report: full pipeline thang (tuong tu)
+- [x] APScheduler 2 cron jobs: Chu nhat 20:00 (tuan), ngay 1 hang thang 08:00 (thang)
+- [x] Manual trigger endpoints: POST /api/report/weekly, POST /api/report/monthly
+- [x] Graceful handling: year_vision.jpg chua ton tai -> skip attachment, log warning
+- [x] tests/test_report.py - 3 tests OK (format HTML, send email, full weekly pipeline)
 
 ### Giai doan 7: Deploy, Hardening, Dashboard
 
@@ -187,6 +193,11 @@
 | 01/03/2026 | GD5: Cap nhat main.py - IntervalTrigger 15 phut + /api/sync/run endpoint. |
 | 01/03/2026 | GD5: Test OK: snapshot 135 Tasks + 49 Sheet tasks, phat hien 1 change khi tick completed, dong bo 1 task vao DB. |
 | 01/03/2026 | GD5: Phase 5 HOAN THANH. |
+| 01/03/2026 | GD6: Tao services/gmail.py - Gmail API sender (OAuth 2.0, send_email + format_report_html + MIME attachment). |
+| 01/03/2026 | GD6: Tao agents/report.py - ReportAgent (collect data -> LLM -> HTML -> email -> Telegram -> log). |
+| 01/03/2026 | GD6: Cap nhat main.py - 2 cron jobs (CN 20:00 tuan, ngay 1 08:00 thang) + 2 manual trigger endpoints. |
+| 01/03/2026 | GD6: Test OK: format HTML (1699 chars), send email (message_id OK), full weekly pipeline (10 tasks, 1327 chars report). |
+| 01/03/2026 | GD6: Phase 6 HOAN THANH. |
 
 ---
 
