@@ -1,20 +1,23 @@
 """
 Zertdoo - He thong AI Agent ca nhan
-Entry point: FastAPI server + APScheduler
+Entry point: FastAPI server + APScheduler (AsyncIO)
 """
 
 import logging
+import time as _time
 from contextlib import asynccontextmanager
+from datetime import date
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Request, Depends, HTTPException
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.templating import Jinja2Templates
 
-from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from config import settings, setup_google_credentials
-from services.database import init_pool, close_pool
+from services.database import init_pool, close_pool, check_db_health
 
 # === Logging ===
 logging.basicConfig(
@@ -24,8 +27,36 @@ logging.basicConfig(
 )
 logger = logging.getLogger("zertdoo")
 
-# === APScheduler (global) ===
-scheduler = BackgroundScheduler()
+# === APScheduler (AsyncIO - dung chung event loop voi FastAPI) ===
+scheduler = AsyncIOScheduler(timezone="Asia/Ho_Chi_Minh")
+
+# === Jinja2 Templates ===
+templates = Jinja2Templates(directory="templates")
+
+# === Thoi gian khoi dong (de tinh uptime) ===
+_start_time = _time.time()
+
+
+# ============================================================
+# API AUTHENTICATION
+# ============================================================
+
+async def verify_api_key(request: Request):
+    """
+    Dependency xac thuc API key cho cac endpoint /api/*.
+    Neu API_SECRET_KEY chua cau hinh -> bo qua (dev mode).
+    Neu da cau hinh -> yeu cau header Authorization: Bearer <key>.
+    """
+    if not settings.api_secret_key:
+        return  # Dev mode, khong can auth
+
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Thieu Authorization header")
+
+    token = auth_header[7:]  # Bo "Bearer "
+    if token != settings.api_secret_key:
+        raise HTTPException(status_code=403, detail="API key khong hop le")
 
 
 # === Lifecycle: khoi dong va tat ===
@@ -49,10 +80,10 @@ async def lifespan(app: FastAPI):
         logger.error("Khong the ket noi database: %s", e)
         logger.warning("Server se chay KHONG co database.")
 
-    # Khoi dong APScheduler
+    # Khoi dong APScheduler (AsyncIO - dung chung event loop)
     _setup_scheduler()
     scheduler.start()
-    logger.info("APScheduler da khoi dong.")
+    logger.info("APScheduler (AsyncIO) da khoi dong voi %d jobs.", len(scheduler.get_jobs()))
 
     # Dang ky Telegram webhook
     if settings.telegram_bot_token:
@@ -83,22 +114,74 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Zertdoo API",
     description="He thong AI Agent ca nhan - Quan ly lich trinh va nhiem vu",
-    version="0.1.0",
+    version="1.0.0",
     lifespan=lifespan,
 )
+
+
+# ============================================================
+# GLOBAL EXCEPTION HANDLER
+# ============================================================
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Bat tat ca exception chua duoc xu ly, log va tra ve 500."""
+    logger.error(
+        "Unhandled exception: %s %s -> %s: %s",
+        request.method, request.url.path,
+        type(exc).__name__, exc,
+        exc_info=True,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"status": "error", "detail": "Loi he thong noi bo"},
+    )
 
 
 # === Health check ===
 @app.get("/health")
 async def health_check():
     """
-    Kiem tra trang thai he thong.
-    Dung cho monitoring (VD: UptimeRobot).
+    Kiem tra trang thai he thong chi tiet.
+    Tra ve trang thai database, scheduler, uptime.
     """
+    uptime_seconds = int(_time.time() - _start_time)
+    hours, remainder = divmod(uptime_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    # Database health
+    db_health = await check_db_health()
+
+    # Scheduler health
+    jobs = scheduler.get_jobs()
+    scheduler_info = {
+        "running": scheduler.running,
+        "job_count": len(jobs),
+        "jobs": [
+            {
+                "id": job.id,
+                "name": job.name,
+                "next_run": str(getattr(job, "next_run_time", None)),
+            }
+            for job in jobs
+        ],
+    }
+
+    # Overall status
+    overall = "ok"
+    if db_health.get("status") != "connected":
+        overall = "degraded"
+    if not scheduler.running:
+        overall = "degraded"
+
     return {
-        "status": "ok",
+        "status": overall,
         "service": settings.app_name,
-        "debug": settings.debug,
+        "version": "1.0.0",
+        "uptime": f"{hours}h {minutes}m {seconds}s",
+        "uptime_seconds": uptime_seconds,
+        "database": db_health,
+        "scheduler": scheduler_info,
     }
 
 
@@ -150,7 +233,7 @@ async def _process_telegram_message(text: str, chat_id: str):
 
 
 # === Scheduler manual trigger ===
-@app.post("/api/scheduler/run")
+@app.post("/api/scheduler/run", dependencies=[Depends(verify_api_key)])
 async def trigger_scheduler():
     """
     Chay SchedulerAgent thu cong (khong doi APScheduler cron).
@@ -176,7 +259,7 @@ async def trigger_scheduler():
 
 
 # === Telegram manual triggers ===
-@app.post("/api/telegram/test")
+@app.post("/api/telegram/test", dependencies=[Depends(verify_api_key)])
 async def test_telegram_message():
     """Gui tin nhan test den Telegram."""
     from services.telegram_sender import send_message
@@ -184,7 +267,7 @@ async def test_telegram_message():
     return {"status": "ok", "messages_sent": len(results)}
 
 
-@app.post("/api/telegram/morning")
+@app.post("/api/telegram/morning", dependencies=[Depends(verify_api_key)])
 async def trigger_morning_summary():
     """Chay morning summary thu cong."""
     from agents.telegram import send_morning_summary
@@ -192,7 +275,7 @@ async def trigger_morning_summary():
     return {"status": "ok"}
 
 
-@app.post("/api/telegram/afternoon")
+@app.post("/api/telegram/afternoon", dependencies=[Depends(verify_api_key)])
 async def trigger_afternoon_reminder():
     """Chay afternoon reminder thu cong."""
     from agents.telegram import send_afternoon_reminder
@@ -200,7 +283,7 @@ async def trigger_afternoon_reminder():
     return {"status": "ok"}
 
 
-@app.post("/api/telegram/evening")
+@app.post("/api/telegram/evening", dependencies=[Depends(verify_api_key)])
 async def trigger_evening_review():
     """Chay evening review thu cong."""
     from agents.telegram import send_evening_review
@@ -209,7 +292,7 @@ async def trigger_evening_review():
 
 
 # === SyncAgent manual trigger ===
-@app.post("/api/sync/run")
+@app.post("/api/sync/run", dependencies=[Depends(verify_api_key)])
 async def trigger_sync():
     """Chay SyncAgent thu cong."""
     from agents.sync import run as sync_run
@@ -226,7 +309,7 @@ async def trigger_sync():
 
 
 # === ReportAgent manual triggers ===
-@app.post("/api/report/weekly")
+@app.post("/api/report/weekly", dependencies=[Depends(verify_api_key)])
 async def trigger_weekly_report():
     """Chay bao cao tuan thu cong."""
     from agents.report import run_weekly_report
@@ -247,7 +330,7 @@ async def trigger_weekly_report():
         )
 
 
-@app.post("/api/report/monthly")
+@app.post("/api/report/monthly", dependencies=[Depends(verify_api_key)])
 async def trigger_monthly_report():
     """Chay bao cao thang thu cong."""
     from agents.report import run_monthly_report
@@ -268,14 +351,100 @@ async def trigger_monthly_report():
         )
 
 
+# ============================================================
+# WEB DASHBOARD
+# ============================================================
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard(request: Request):
+    """
+    Web dashboard - trang tong quan he thong.
+    Hien thi: tasks hom nay, ti le hoan thanh, deadlines, agent logs.
+    """
+    from services.database import ensure_pool
+
+    # Du lieu mac dinh khi DB khong kha dung
+    context = {
+        "request": request,
+        "db_available": False,
+        "today_tasks": [],
+        "stats": {
+            "total_tasks_30d": 0,
+            "completed_tasks_30d": 0,
+            "completion_rate": 0,
+            "avg_tasks_per_day": 0,
+        },
+        "recent_agents": [],
+        "pending_tasks": [],
+        "uptime_seconds": int(_time.time() - _start_time),
+        "scheduler_running": scheduler.running,
+        "scheduler_jobs": len(scheduler.get_jobs()),
+    }
+
+    pool = await ensure_pool()
+    if pool:
+        try:
+            context["db_available"] = True
+
+            # Tasks hom nay
+            today = date.today()
+            today_rows = await pool.fetch(
+                """
+                SELECT task_name, source, category, priority, status,
+                       scheduled_time_slot, duration_minutes
+                FROM task_logs
+                WHERE scheduled_date = $1
+                ORDER BY scheduled_time_slot ASC NULLS LAST
+                """,
+                today,
+            )
+            context["today_tasks"] = [dict(r) for r in today_rows]
+
+            # Thong ke 30 ngay
+            from services.database import get_behavior_stats
+            context["stats"] = await get_behavior_stats(30)
+
+            # Agent logs gan nhat (10 entries)
+            agent_rows = await pool.fetch(
+                """
+                SELECT agent_name, llm_model, duration_ms, error,
+                       created_at AT TIME ZONE 'Asia/Ho_Chi_Minh' as created_at_vn
+                FROM agent_logs
+                ORDER BY created_at DESC
+                LIMIT 10
+                """
+            )
+            context["recent_agents"] = [dict(r) for r in agent_rows]
+
+            # Tasks chua xong (pending/rescheduled) voi deadline gan
+            pending_rows = await pool.fetch(
+                """
+                SELECT task_name, source, category, priority,
+                       scheduled_date, status
+                FROM task_logs
+                WHERE status IN ('pending', 'rescheduled')
+                  AND scheduled_date IS NOT NULL
+                ORDER BY scheduled_date ASC
+                LIMIT 15
+                """
+            )
+            context["pending_tasks"] = [dict(r) for r in pending_rows]
+
+        except Exception as e:
+            logger.error("Dashboard query loi: %s", e)
+            context["db_error"] = str(e)
+
+    return templates.TemplateResponse("dashboard.html", context)
+
+
 # === APScheduler setup ===
 def _setup_scheduler():
-    """Dang ky cac cron jobs vao APScheduler."""
-    from agents.scheduler import run_scheduled
+    """Dang ky cac cron/interval jobs vao AsyncIOScheduler."""
+    from agents.scheduler import run_scheduled_async
 
     # SchedulerAgent: chay moi ngay luc 6:00 AM VN
     scheduler.add_job(
-        run_scheduled,
+        run_scheduled_async,
         trigger=CronTrigger(
             hour=settings.scheduler_hour,
             minute=settings.scheduler_minute,
@@ -294,14 +463,14 @@ def _setup_scheduler():
     # Telegram notification jobs
     if settings.telegram_bot_token:
         from agents.telegram import (
-            run_morning_summary,
-            run_afternoon_reminder,
-            run_evening_review,
+            run_morning_summary_async,
+            run_afternoon_reminder_async,
+            run_evening_review_async,
         )
 
         # 6:15 AM: tom tat lich ngay (sau khi SchedulerAgent chay)
         scheduler.add_job(
-            run_morning_summary,
+            run_morning_summary_async,
             trigger=CronTrigger(hour=6, minute=15, timezone="Asia/Ho_Chi_Minh"),
             id="telegram_morning",
             name="Telegram morning summary",
@@ -310,7 +479,7 @@ def _setup_scheduler():
 
         # 12:00 PM: nhac tasks buoi chieu
         scheduler.add_job(
-            run_afternoon_reminder,
+            run_afternoon_reminder_async,
             trigger=CronTrigger(hour=12, minute=0, timezone="Asia/Ho_Chi_Minh"),
             id="telegram_afternoon",
             name="Telegram afternoon reminder",
@@ -319,7 +488,7 @@ def _setup_scheduler():
 
         # 21:00: review cuoi ngay
         scheduler.add_job(
-            run_evening_review,
+            run_evening_review_async,
             trigger=CronTrigger(hour=21, minute=0, timezone="Asia/Ho_Chi_Minh"),
             id="telegram_evening",
             name="Telegram evening review",
@@ -329,10 +498,10 @@ def _setup_scheduler():
         logger.info("Da dang ky 3 Telegram notification jobs (6:15, 12:00, 21:00)")
 
     # SyncAgent: polling moi 15 phut
-    from agents.sync import run_scheduled as sync_run_scheduled
+    from agents.sync import run_scheduled_async as sync_run_async
 
     scheduler.add_job(
-        sync_run_scheduled,
+        sync_run_async,
         trigger=IntervalTrigger(minutes=15, timezone="Asia/Ho_Chi_Minh"),
         id="sync_polling",
         name="SyncAgent polling (15 min)",
@@ -341,11 +510,11 @@ def _setup_scheduler():
     logger.info("Da dang ky SyncAgent polling moi 15 phut")
 
     # ReportAgent cron jobs
-    from agents.report import run_weekly_scheduled, run_monthly_scheduled
+    from agents.report import run_weekly_scheduled_async, run_monthly_scheduled_async
 
     # Chu nhat 20:00: bao cao tuan
     scheduler.add_job(
-        run_weekly_scheduled,
+        run_weekly_scheduled_async,
         trigger=CronTrigger(
             day_of_week="sun", hour=20, minute=0,
             timezone="Asia/Ho_Chi_Minh",
@@ -357,7 +526,7 @@ def _setup_scheduler():
 
     # Ngay 1 hang thang 08:00: bao cao thang
     scheduler.add_job(
-        run_monthly_scheduled,
+        run_monthly_scheduled_async,
         trigger=CronTrigger(
             day=1, hour=8, minute=0,
             timezone="Asia/Ho_Chi_Minh",

@@ -94,6 +94,12 @@ class Settings(BaseSettings):
     gmail_recipient: str = "nhatdm234112e@st.uel.edu.vn"
     year_vision_path: str = "assets/year_vision.jpg"
 
+    # === API Security ===
+    api_secret_key: str = Field(
+        default="",
+        description="Secret key de xac thuc cac API endpoint (Authorization: Bearer <key>)"
+    )
+
     # === Scheduler ===
     scheduler_hour: int = 6
     scheduler_minute: int = 0

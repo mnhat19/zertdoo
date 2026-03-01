@@ -436,22 +436,22 @@ async def run(target_date: date = None) -> dict:
 
 
 # ============================================================
-# APSCHEDULER WRAPPER (goi tu scheduler thread)
+# APSCHEDULER WRAPPER (async - dung voi AsyncIOScheduler)
 # ============================================================
 
-def run_scheduled():
+async def run_scheduled_async():
     """
-    Wrapper de APScheduler goi (APScheduler goi sync function).
-    Tao event loop moi de chay async run().
+    Async wrapper cho AsyncIOScheduler.
+    Chay tren cung event loop voi FastAPI, truy cap DB pool truc tiep.
     """
     logger.info("APScheduler trigger: chay SchedulerAgent...")
     try:
-        result = asyncio.run(run())
+        result = await run()
         logger.info("SchedulerAgent chay xong. Summary:\n%s", result["summary"][:500])
         # Gui summary qua Telegram
         try:
             from services.telegram_sender import send_message
-            asyncio.run(send_message(result["summary"]))
+            await send_message(result["summary"])
             logger.info("Da gui summary qua Telegram")
         except Exception as te:
             logger.error("Loi gui Telegram: %s", te)
@@ -460,8 +460,8 @@ def run_scheduled():
         # Gui thong bao loi qua Telegram
         try:
             from services.telegram_sender import send_message
-            asyncio.run(send_message(
+            await send_message(
                 f"[LỖI] SchedulerAgent thất bại: {type(e).__name__}: {e}"
-            ))
+            )
         except Exception:
             pass

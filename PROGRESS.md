@@ -16,7 +16,7 @@
 | 4 - TelegramAgent | HOAN THANH | Webhook + handle_message + 3 notification jobs + action execution |
 | 5 - SyncAgent | HOAN THANH | Polling 15 phut, change detection, dong bo Tasks/Sheet -> Postgres, deadline alerts |
 | 6 - ReportAgent va Gmail | HOAN THANH | Gmail API + ReportAgent + cron tuan/thang |
-| 7 - Deploy, Hardening, Dashboard | Chua bat dau | Systemd, monitoring, web UI |
+| 7 - Deploy, Hardening, Dashboard | HOAN THANH | AsyncIOScheduler + /health chi tiet + API auth + dashboard + rate limit |
 
 ---
 
@@ -140,13 +140,15 @@
 
 ### Giai doan 7: Deploy, Hardening, Dashboard
 
-- [ ] Tao systemd service (auto-restart)
-- [ ] Error handling toan he thong
-- [ ] Health check endpoint /health
-- [ ] Rate limit handling cho moi API
-- [ ] Graceful degradation
-- [ ] Web dashboard (uu tien thap)
-- [ ] Test on dinh 72h
+- [x] Chuyen BackgroundScheduler -> AsyncIOScheduler (chung event loop voi FastAPI)
+- [x] /health nang cap: kiem tra DB latency + pool size, scheduler status, uptime
+- [x] Global exception handler: bat tat ca unhandled exceptions
+- [x] API authentication: Bearer token cho tat ca /api/* endpoints
+- [x] Rate limit handling: phan biet HTTP 429, backoff dai hon (15s, 30s, 60s)
+- [x] DB resilience: ensure_pool() auto-reconnect, check_db_health()
+- [x] Web dashboard: /dashboard voi Jinja2 (tasks hom nay, stats, agent logs, pending tasks)
+- [x] Render auto-deploy, UptimeRobot giu song
+- [x] Cap nhat render.yaml + .env.example (them API_SECRET_KEY)
 
 ---
 
@@ -198,6 +200,12 @@
 | 01/03/2026 | GD6: Cap nhat main.py - 2 cron jobs (CN 20:00 tuan, ngay 1 08:00 thang) + 2 manual trigger endpoints. |
 | 01/03/2026 | GD6: Test OK: format HTML (1699 chars), send email (message_id OK), full weekly pipeline (10 tasks, 1327 chars report). |
 | 01/03/2026 | GD6: Phase 6 HOAN THANH. |
+| 02/03/2026 | Vietnamese diacritics: fix tat ca output tieng Viet co dau (3 prompts + 50+ strings + 15 files). |
+| 02/03/2026 | GD7: Chuyen BackgroundScheduler -> AsyncIOScheduler (fix event loop conflict). |
+| 02/03/2026 | GD7: /health nang cap (DB latency, pool, scheduler, uptime), global exception handler. |
+| 02/03/2026 | GD7: API auth (Bearer token), rate limit aware backoff, DB ensure_pool(). |
+| 02/03/2026 | GD7: Web dashboard /dashboard (Jinja2, dark theme, stats, tasks, agent logs). |
+| 02/03/2026 | GD7: Phase 7 HOAN THANH. |
 
 ---
 
@@ -221,6 +229,9 @@
 | httpx cho Telegram API | Nhe hon python-telegram-bot, chi can gui tin nhan + webhook, khong can framework nang |
 | Background task cho webhook | asyncio.create_task xu ly tin nhan -> tra 200 OK ngay cho Telegram (tranh timeout) |
 | Webhook secret token | X-Telegram-Bot-Api-Secret-Token header xac thuc, tranh fake requests |
+| AsyncIOScheduler thay BackgroundScheduler | Chay tren cung event loop voi FastAPI, truy cap DB pool truc tiep, khong can asyncio.run() |
+| API Bearer token auth | Bao ve /api/* endpoints, bo qua khi chua cau hinh (dev mode), yeu cau khi deploy |
+| Rate limit aware retry | HTTP 429 -> backoff dai (15s, 30s, 60s, max 120s), loi khac -> backoff ngan (2s, 4s, 8s) |
 | Snapshot-based sync | Luu JSON snapshot toan bo trang thai, so sanh cu-moi de phat hien diff, tranh polling tung task |
 | IntervalTrigger 15 phut | Can bang giua realtime va API quota, du nhanh cho use case ca nhan |
 

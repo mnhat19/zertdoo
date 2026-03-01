@@ -504,22 +504,22 @@ async def _notify_changes(changes: list[dict]):
 
 
 # ============================================================
-# APSCHEDULER WRAPPER
+# APSCHEDULER WRAPPER (async - dung voi AsyncIOScheduler)
 # ============================================================
 
-def run_scheduled():
-    """Wrapper sync cho APScheduler goi."""
+async def run_scheduled_async():
+    """Async wrapper cho AsyncIOScheduler."""
     logger.info("APScheduler trigger: SyncAgent...")
     try:
-        result = asyncio.run(run())
+        result = await run()
         logger.info("SyncAgent scheduled run xong: %s", result)
     except Exception as e:
         logger.error("SyncAgent scheduled loi: %s", e, exc_info=True)
         # Gui Telegram thong bao loi
         try:
             from services.telegram_sender import send_message
-            asyncio.run(send_message(
+            await send_message(
                 f"[LỖI] SyncAgent thất bại: {type(e).__name__}: {e}"
-            ))
+            )
         except Exception:
             pass

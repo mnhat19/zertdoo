@@ -35,3 +35,5 @@ services:
         sync: false
       - key: GMAIL_RECIPIENT
         value: nhatdm234112e@st.uel.edu.vn
+      - key: API_SECRET_KEY
+        sync: false

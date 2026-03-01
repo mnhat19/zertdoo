@@ -345,38 +345,38 @@ async def run_monthly_report() -> dict:
 
 
 # ============================================================
-# APSCHEDULER WRAPPERS
+# APSCHEDULER WRAPPERS (async - dung voi AsyncIOScheduler)
 # ============================================================
 
-def run_weekly_scheduled():
-    """Wrapper sync cho APScheduler - bao cao tuan."""
+async def run_weekly_scheduled_async():
+    """Async wrapper cho AsyncIOScheduler - bao cao tuan."""
     logger.info("APScheduler trigger: bao cao tuan")
     try:
-        result = asyncio.run(run_weekly_report())
+        result = await run_weekly_report()
         logger.info("Bao cao tuan xong: email_id=%s", result.get("email_id"))
     except Exception as e:
         logger.error("ReportAgent (tuan) loi: %s", e, exc_info=True)
         try:
             from services.telegram_sender import send_message
-            asyncio.run(send_message(
+            await send_message(
                 f"[LỖI] ReportAgent tuần thất bại: {type(e).__name__}: {e}"
-            ))
+            )
         except Exception:
             pass
 
 
-def run_monthly_scheduled():
-    """Wrapper sync cho APScheduler - bao cao thang."""
+async def run_monthly_scheduled_async():
+    """Async wrapper cho AsyncIOScheduler - bao cao thang."""
     logger.info("APScheduler trigger: bao cao thang")
     try:
-        result = asyncio.run(run_monthly_report())
+        result = await run_monthly_report()
         logger.info("Bao cao thang xong: email_id=%s", result.get("email_id"))
     except Exception as e:
         logger.error("ReportAgent (thang) loi: %s", e, exc_info=True)
         try:
             from services.telegram_sender import send_message
-            asyncio.run(send_message(
+            await send_message(
                 f"[LỖI] ReportAgent tháng thất bại: {type(e).__name__}: {e}"
-            ))
+            )
         except Exception:
             pass

@@ -33,6 +33,32 @@ logger = logging.getLogger("zertdoo.llm")
 
 T = TypeVar("T", bound=BaseModel)
 
+
+def _is_rate_limit_error(e: Exception) -> bool:
+    """Kiem tra xem loi co phai rate limit (HTTP 429) hay khong."""
+    error_str = str(e).lower()
+    if "429" in error_str or "rate" in error_str or "quota" in error_str:
+        return True
+    if "resource_exhausted" in error_str or "too many requests" in error_str:
+        return True
+    # google-genai va groq exceptions
+    if hasattr(e, "status_code") and getattr(e, "status_code", 0) == 429:
+        return True
+    if hasattr(e, "code") and getattr(e, "code", 0) == 429:
+        return True
+    return False
+
+
+def _get_backoff_seconds(attempt: int, is_rate_limit: bool) -> int:
+    """
+    Tinh thoi gian cho giua cac lan retry.
+    - Rate limit: doi lau hon (15s, 30s, 60s)
+    - Loi khac: exponential backoff ngan (2s, 4s, 8s)
+    """
+    if is_rate_limit:
+        return min(15 * (2 ** (attempt - 1)), 120)  # 15s, 30s, 60s, max 120s
+    return 2 ** attempt  # 2s, 4s, 8s
+
 # ============================================================
 # GEMINI CLIENT
 # ============================================================
@@ -212,11 +238,14 @@ async def call_llm(
 
             except Exception as e:
                 last_error = e
+                is_rl = _is_rate_limit_error(e)
                 logger.warning(
-                    f"[{agent_name}] Gemini lan {attempt} that bai: {type(e).__name__}: {e}"
+                    f"[{agent_name}] Gemini lan {attempt} that bai: "
+                    f"{type(e).__name__}: {e}"
+                    f"{' (RATE LIMIT)' if is_rl else ''}"
                 )
                 if attempt < max_retries:
-                    wait = 2 ** attempt  # 2s, 4s, 8s
+                    wait = _get_backoff_seconds(attempt, is_rl)
                     logger.info(f"[{agent_name}] Cho {wait}s truoc khi retry...")
                     await asyncio.sleep(wait)
 
@@ -257,11 +286,14 @@ async def call_llm(
 
             except Exception as e:
                 last_error = e
+                is_rl = _is_rate_limit_error(e)
                 logger.warning(
-                    f"[{agent_name}] Groq lan {attempt} that bai: {type(e).__name__}: {e}"
+                    f"[{agent_name}] Groq lan {attempt} that bai: "
+                    f"{type(e).__name__}: {e}"
+                    f"{' (RATE LIMIT)' if is_rl else ''}"
                 )
                 if attempt < max_retries:
-                    wait = 2 ** attempt
+                    wait = _get_backoff_seconds(attempt, is_rl)
                     await asyncio.sleep(wait)
 
         logger.error(
@@ -332,11 +364,13 @@ async def call_llm_text(
 
             except Exception as e:
                 last_error = e
+                is_rl = _is_rate_limit_error(e)
                 logger.warning(
                     f"[{agent_name}] Gemini text lan {attempt} that bai: {e}"
+                    f"{' (RATE LIMIT)' if is_rl else ''}"
                 )
                 if attempt < max_retries:
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep(_get_backoff_seconds(attempt, is_rl))
 
     if settings.groq_api_key:
         for attempt in range(1, max_retries + 1):
@@ -362,11 +396,13 @@ async def call_llm_text(
 
             except Exception as e:
                 last_error = e
+                is_rl = _is_rate_limit_error(e)
                 logger.warning(
                     f"[{agent_name}] Groq text lan {attempt} that bai: {e}"
+                    f"{' (RATE LIMIT)' if is_rl else ''}"
                 )
                 if attempt < max_retries:
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep(_get_backoff_seconds(attempt, is_rl))
 
     raise RuntimeError(
         f"[{agent_name}] call_llm_text that bai. Loi cuoi: {last_error}"

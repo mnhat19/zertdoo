@@ -712,31 +712,31 @@ async def send_evening_review():
 
 
 # ============================================================
-# APSCHEDULER WRAPPERS (sync -> async)
+# APSCHEDULER WRAPPERS (async - dung voi AsyncIOScheduler)
 # ============================================================
 
-def run_morning_summary():
-    """Wrapper sync cho APScheduler."""
+async def run_morning_summary_async():
+    """Async wrapper cho AsyncIOScheduler."""
     logger.info("APScheduler trigger: morning summary")
     try:
-        asyncio.run(send_morning_summary())
+        await send_morning_summary()
     except Exception as e:
         logger.error("Loi morning summary: %s", e, exc_info=True)
 
 
-def run_afternoon_reminder():
-    """Wrapper sync cho APScheduler."""
+async def run_afternoon_reminder_async():
+    """Async wrapper cho AsyncIOScheduler."""
     logger.info("APScheduler trigger: afternoon reminder")
     try:
-        asyncio.run(send_afternoon_reminder())
+        await send_afternoon_reminder()
     except Exception as e:
         logger.error("Loi afternoon reminder: %s", e, exc_info=True)
 
 
-def run_evening_review():
-    """Wrapper sync cho APScheduler."""
+async def run_evening_review_async():
+    """Async wrapper cho AsyncIOScheduler."""
     logger.info("APScheduler trigger: evening review")
     try:
-        asyncio.run(send_evening_review())
+        await send_evening_review()
     except Exception as e:
         logger.error("Loi evening review: %s", e, exc_info=True)

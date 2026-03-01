@@ -68,6 +68,47 @@ def get_pool() -> asyncpg.Pool:
     return _pool
 
 
+async def ensure_pool() -> Optional[asyncpg.Pool]:
+    """
+    Dam bao pool san sang. Neu chua init hoac da dong, thu khoi tao lai.
+    Tra ve pool hoac None neu khong the ket noi.
+    """
+    global _pool
+    if _pool is not None:
+        return _pool
+    try:
+        logger.info("Pool chua san sang, thu khoi tao lai...")
+        await init_pool()
+        return _pool
+    except Exception as e:
+        logger.error("Khong the khoi tao lai pool: %s", e)
+        return None
+
+
+async def check_db_health() -> dict:
+    """
+    Kiem tra tinh trang ket noi database.
+    Tra ve dict voi status, latency, pool size.
+    """
+    if _pool is None:
+        return {"status": "disconnected", "error": "Pool chua khoi tao"}
+    try:
+        import time
+        start = time.time()
+        val = await _pool.fetchval("SELECT 1")
+        latency_ms = round((time.time() - start) * 1000, 1)
+        return {
+            "status": "connected",
+            "latency_ms": latency_ms,
+            "pool_size": _pool.get_size(),
+            "pool_free": _pool.get_idle_size(),
+            "pool_min": _pool.get_min_size(),
+            "pool_max": _pool.get_max_size(),
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
 # ============================================================
 # QUERY: Task Logs
 # ============================================================

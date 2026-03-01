@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zertdoo Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #0f0f0f;
+            color: #e0e0e0;
+            min-height: 100vh;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 0;
+            border-bottom: 1px solid #333;
+            margin-bottom: 24px;
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .status-ok { background: #1a2e1a; color: #4caf50; }
+        .status-ok .status-dot { background: #4caf50; }
+        .status-degraded { background: #2e2a1a; color: #ff9800; }
+        .status-degraded .status-dot { background: #ff9800; }
+        .status-error { background: #2e1a1a; color: #f44336; }
+        .status-error .status-dot { background: #f44336; }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            padding: 16px;
+        }
+
+        .stat-card .label {
+            font-size: 0.8rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .stat-card .value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .stat-card .sub {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 2px;
+        }
+
+        .section {
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+
+        .section h2 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #ccc;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #2a2a2a;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            text-align: left;
+            font-size: 0.75rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 8px 12px;
+            border-bottom: 1px solid #2a2a2a;
+        }
+
+        td {
+            padding: 8px 12px;
+            font-size: 0.85rem;
+            border-bottom: 1px solid #1f1f1f;
+        }
+
+        tr:hover {
+            background: #222;
+        }
+
+        .priority-high { color: #f44336; font-weight: 600; }
+        .priority-medium { color: #ff9800; }
+        .priority-low { color: #8bc34a; }
+
+        .status-done {
+            color: #4caf50;
+            font-weight: 500;
+        }
+
+        .status-pending {
+            color: #ff9800;
+        }
+
+        .status-rescheduled {
+            color: #2196f3;
+        }
+
+        .empty-state {
+            text-align: center;
+            color: #555;
+            padding: 24px;
+            font-size: 0.9rem;
+        }
+
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .two-col {
+                grid-template-columns: 1fr;
+            }
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        .agent-name {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .agent-scheduler { background: #1a2a3a; color: #64b5f6; }
+        .agent-telegram { background: #1a2a2a; color: #4db6ac; }
+        .agent-sync { background: #2a2a1a; color: #ffd54f; }
+        .agent-report { background: #2a1a2a; color: #ce93d8; }
+
+        .error-text { color: #f44336; font-size: 0.8rem; }
+
+        footer {
+            text-align: center;
+            padding: 16px 0;
+            color: #444;
+            font-size: 0.75rem;
+            border-top: 1px solid #2a2a2a;
+            margin-top: 20px;
+        }
+
+        .refresh-btn {
+            background: #2a2a2a;
+            color: #ccc;
+            border: 1px solid #333;
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        .refresh-btn:hover {
+            background: #333;
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Zertdoo Dashboard</h1>
+            <div style="display: flex; align-items: center; gap: 12px;">
+                {% if scheduler_running %}
+                <span class="status-badge status-ok">
+                    <span class="status-dot"></span>
+                    Scheduler: {{ scheduler_jobs }} jobs
+                </span>
+                {% else %}
+                <span class="status-badge status-error">
+                    <span class="status-dot"></span>
+                    Scheduler: offline
+                </span>
+                {% endif %}
+
+                {% if db_available %}
+                <span class="status-badge status-ok">
+                    <span class="status-dot"></span>
+                    Database: connected
+                </span>
+                {% else %}
+                <span class="status-badge status-error">
+                    <span class="status-dot"></span>
+                    Database: disconnected
+                </span>
+                {% endif %}
+
+                <button class="refresh-btn" onclick="location.reload()">Refresh</button>
+            </div>
+        </header>
+
+        <!-- Stats Cards -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="label">Hoan thanh (30 ngay)</div>
+                <div class="value">{{ stats.completed_tasks_30d }}</div>
+                <div class="sub">/ {{ stats.total_tasks_30d }} tasks</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Ti le hoan thanh</div>
+                <div class="value">{{ (stats.completion_rate * 100) | round(0) | int }}%</div>
+                <div class="sub">30 ngay gan nhat</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Trung binh / ngay</div>
+                <div class="value">{{ stats.avg_tasks_per_day }}</div>
+                <div class="sub">tasks / ngay</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Uptime</div>
+                <div class="value" id="uptime-value">-</div>
+                <div class="sub" id="uptime-sub">{{ uptime_seconds }}s</div>
+            </div>
+        </div>
+
+        <!-- Tasks hom nay -->
+        <div class="section">
+            <h2>Nhiem vu hom nay</h2>
+            {% if today_tasks %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Khung gio</th>
+                        <th>Nhiem vu</th>
+                        <th>Danh muc</th>
+                        <th>Uu tien</th>
+                        <th>Trang thai</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in today_tasks %}
+                    <tr>
+                        <td>{{ t.scheduled_time_slot or '-' }}</td>
+                        <td>{{ t.task_name }}</td>
+                        <td>{{ t.category or '-' }}</td>
+                        <td class="priority-{{ (t.priority or 'low') | lower }}">{{ t.priority or '-' }}</td>
+                        <td class="status-{{ t.status }}">{{ t.status }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state">Chua co nhiem vu nao cho hom nay</div>
+            {% endif %}
+        </div>
+
+        <div class="two-col">
+            <!-- Pending tasks -->
+            <div class="section">
+                <h2>Sap den han</h2>
+                {% if pending_tasks %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Ngay</th>
+                            <th>Nhiem vu</th>
+                            <th>Uu tien</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for t in pending_tasks %}
+                        <tr>
+                            <td>{{ t.scheduled_date or '-' }}</td>
+                            <td>{{ t.task_name }}</td>
+                            <td class="priority-{{ (t.priority or 'low') | lower }}">{{ t.priority or '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="empty-state">Khong co task nao sap den han</div>
+                {% endif %}
+            </div>
+
+            <!-- Agent logs -->
+            <div class="section">
+                <h2>Hoat dong agent gan day</h2>
+                {% if recent_agents %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Agent</th>
+                            <th>Model</th>
+                            <th>Thoi gian</th>
+                            <th>Trang thai</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for a in recent_agents %}
+                        <tr>
+                            <td>
+                                <span class="agent-name agent-{{ a.agent_name.split('.')[0] if '.' in a.agent_name else a.agent_name }}">
+                                    {{ a.agent_name }}
+                                </span>
+                            </td>
+                            <td>{{ a.llm_model or '-' }}</td>
+                            <td>
+                                {% if a.created_at_vn %}
+                                    {{ a.created_at_vn.strftime('%d/%m %H:%M') }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if a.error %}
+                                <span class="error-text">Loi</span>
+                                {% else %}
+                                <span class="status-done">OK</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="empty-state">Chua co log nao</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <footer>
+            Zertdoo v1.0.0 -- He thong AI Agent ca nhan
+        </footer>
+    </div>
+
+    <script>
+        // Format uptime
+        function formatUptime(seconds) {
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = seconds % 60;
+            if (h > 0) return h + 'h ' + m + 'm';
+            if (m > 0) return m + 'm ' + s + 's';
+            return s + 's';
+        }
+
+        let uptimeSeconds = {{ uptime_seconds }};
+        const uptimeEl = document.getElementById('uptime-value');
+        const uptimeSub = document.getElementById('uptime-sub');
+        uptimeEl.textContent = formatUptime(uptimeSeconds);
+
+        setInterval(() => {
+            uptimeSeconds++;
+            uptimeEl.textContent = formatUptime(uptimeSeconds);
+        }, 1000);
+
+        // Auto refresh moi 60 giay
+        setTimeout(() => location.reload(), 60000);
+    </script>
+</body>
+</html>
