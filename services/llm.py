@@ -60,23 +60,46 @@ def _get_backoff_seconds(attempt: int, is_rate_limit: bool) -> int:
     return 2 ** attempt  # 2s, 4s, 8s
 
 # ============================================================
+# GEMINI KEY MANAGER (rotation)
+# ============================================================
+
+def _get_all_gemini_keys() -> list:
+    """
+    Tra ve danh sach tat ca Gemini API keys san co.
+    Thu tu: GEMINI_API_KEY (primary) + GEMINI_API_KEYS (comma-separated).
+    Keys trung lap bi loai bo.
+    """
+    keys = []
+    # Key chinh
+    if settings.gemini_api_key and settings.gemini_api_key.strip():
+        keys.append(settings.gemini_api_key.strip())
+    # Keys bo sung
+    if settings.gemini_api_keys:
+        for k in settings.gemini_api_keys.split(","):
+            k = k.strip()
+            if k and k not in keys:
+                keys.append(k)
+    return keys
+
+
+# ============================================================
 # GEMINI CLIENT
 # ============================================================
 
-def _get_gemini_client():
-    """Tao Google GenAI client (SDK moi: google-genai)."""
+def _get_gemini_client(api_key: str):
+    """Tao Google GenAI client voi api_key cu the."""
     from google import genai
-    return genai.Client(api_key=settings.gemini_api_key)
+    return genai.Client(api_key=api_key)
 
 
-def _call_gemini_sync(system_prompt: str, user_content: str) -> str:
+def _call_gemini_sync(system_prompt: str, user_content: str, api_key: str) -> str:
     """
     Goi Gemini API (sync) bang google-genai SDK.
     Tra ve raw text response.
     """
     from google.genai import types
 
-    client = _get_gemini_client()
+    client = _get_gemini_client(api_key)
     response = client.models.generate_content(
         model=settings.gemini_model,
         contents=user_content,
@@ -206,51 +229,62 @@ async def call_llm(
     used_model = None
     raw_response = None
 
-    # === Thu Gemini truoc ===
-    if settings.gemini_api_key:
-        for attempt in range(1, max_retries + 1):
-            try:
-                logger.info(
-                    f"[{agent_name}] Goi Gemini ({settings.gemini_model}), "
-                    f"lan {attempt}/{max_retries}"
-                )
-                # Chay sync call trong thread pool (google-generativeai la sync)
-                raw_response = await asyncio.to_thread(
-                    _call_gemini_sync, system_prompt, user_content
-                )
-                used_model = settings.gemini_model
-                result = _parse_and_validate(raw_response, response_model)
-
-                # Log thanh cong
-                duration_ms = int((time.time() - start_time) * 1000)
-                if log_to_db:
-                    await _log_llm_call(
-                        agent_name=agent_name,
-                        model=used_model,
-                        input_summary=_truncate(user_content, 500),
-                        output_summary=_truncate(raw_response, 1000),
-                        duration_ms=duration_ms,
+    # === Thu Gemini truoc (rotation nhieu keys) ===
+    gemini_keys = _get_all_gemini_keys()
+    if gemini_keys:
+        n_keys = len(gemini_keys)
+        for key_idx, api_key in enumerate(gemini_keys):
+            key_label = f"key {key_idx + 1}/{n_keys}"
+            for attempt in range(1, max_retries + 1):
+                try:
+                    logger.info(
+                        f"[{agent_name}] Gemini {key_label} ({settings.gemini_model}), "
+                        f"lan {attempt}/{max_retries}"
                     )
-                logger.info(
-                    f"[{agent_name}] Gemini thanh cong sau {duration_ms}ms"
-                )
-                return result
+                    raw_response = await asyncio.to_thread(
+                        _call_gemini_sync, system_prompt, user_content, api_key
+                    )
+                    used_model = settings.gemini_model
+                    result = _parse_and_validate(raw_response, response_model)
 
-            except Exception as e:
-                last_error = e
-                is_rl = _is_rate_limit_error(e)
-                logger.warning(
-                    f"[{agent_name}] Gemini lan {attempt} that bai: "
-                    f"{type(e).__name__}: {e}"
-                    f"{' (RATE LIMIT)' if is_rl else ''}"
-                )
-                if attempt < max_retries:
-                    wait = _get_backoff_seconds(attempt, is_rl)
-                    logger.info(f"[{agent_name}] Cho {wait}s truoc khi retry...")
-                    await asyncio.sleep(wait)
+                    duration_ms = int((time.time() - start_time) * 1000)
+                    if log_to_db:
+                        await _log_llm_call(
+                            agent_name=agent_name,
+                            model=used_model,
+                            input_summary=_truncate(user_content, 500),
+                            output_summary=_truncate(raw_response, 1000),
+                            duration_ms=duration_ms,
+                        )
+                    logger.info(
+                        f"[{agent_name}] Gemini {key_label} thanh cong sau {duration_ms}ms"
+                    )
+                    return result
+
+                except Exception as e:
+                    last_error = e
+                    is_rl = _is_rate_limit_error(e)
+                    logger.warning(
+                        f"[{agent_name}] Gemini {key_label} lan {attempt} that bai: "
+                        f"{type(e).__name__}: {e}"
+                        f"{' (RATE LIMIT)' if is_rl else ''}"
+                    )
+                    if is_rl:
+                        # Rate limit: bo qua key nay, thu key tiep theo ngay lap tuc
+                        if key_idx < n_keys - 1:
+                            logger.info(
+                                f"[{agent_name}] Key {key_idx + 1} bi rate limit, "
+                                f"chuyen sang key {key_idx + 2}..."
+                            )
+                        break  # Thoat vong attempt, sang key tiep
+                    elif attempt < max_retries:
+                        wait = _get_backoff_seconds(attempt, False)
+                        logger.info(f"[{agent_name}] Cho {wait}s truoc khi retry...")
+                        await asyncio.sleep(wait)
 
         logger.warning(
-            f"[{agent_name}] Gemini that bai {max_retries} lan. Chuyen sang Groq..."
+            f"[{agent_name}] Tat ca {n_keys} Gemini key(s) that bai/het quota. "
+            f"Chuyen sang Groq..."
         )
     else:
         logger.info(f"[{agent_name}] Khong co Gemini API key, dung Groq truc tiep")
@@ -339,38 +373,49 @@ async def call_llm_text(
     start_time = time.time()
     used_model = None
 
-    # Tao model khong ep JSON
-    if settings.gemini_api_key:
-        for attempt in range(1, max_retries + 1):
-            try:
-                logger.info(
-                    f"[{agent_name}] Goi Gemini text ({settings.gemini_model}), "
-                    f"lan {attempt}/{max_retries}"
-                )
-                raw = await asyncio.to_thread(
-                    _call_gemini_text_sync, system_prompt, user_content
-                )
-                used_model = settings.gemini_model
-                duration_ms = int((time.time() - start_time) * 1000)
-                if log_to_db:
-                    await _log_llm_call(
-                        agent_name=agent_name,
-                        model=used_model,
-                        input_summary=_truncate(user_content, 500),
-                        output_summary=_truncate(raw, 1000),
-                        duration_ms=duration_ms,
+    # Tao model khong ep JSON (dung Gemini rotation)
+    gemini_keys = _get_all_gemini_keys()
+    if gemini_keys:
+        n_keys = len(gemini_keys)
+        for key_idx, api_key in enumerate(gemini_keys):
+            key_label = f"key {key_idx + 1}/{n_keys}"
+            for attempt in range(1, max_retries + 1):
+                try:
+                    logger.info(
+                        f"[{agent_name}] Gemini text {key_label} ({settings.gemini_model}), "
+                        f"lan {attempt}/{max_retries}"
                     )
-                return raw
+                    raw = await asyncio.to_thread(
+                        _call_gemini_text_sync, system_prompt, user_content, api_key
+                    )
+                    used_model = settings.gemini_model
+                    duration_ms = int((time.time() - start_time) * 1000)
+                    if log_to_db:
+                        await _log_llm_call(
+                            agent_name=agent_name,
+                            model=used_model,
+                            input_summary=_truncate(user_content, 500),
+                            output_summary=_truncate(raw, 1000),
+                            duration_ms=duration_ms,
+                        )
+                    return raw
 
-            except Exception as e:
-                last_error = e
-                is_rl = _is_rate_limit_error(e)
-                logger.warning(
-                    f"[{agent_name}] Gemini text lan {attempt} that bai: {e}"
-                    f"{' (RATE LIMIT)' if is_rl else ''}"
-                )
-                if attempt < max_retries:
-                    await asyncio.sleep(_get_backoff_seconds(attempt, is_rl))
+                except Exception as e:
+                    last_error = e
+                    is_rl = _is_rate_limit_error(e)
+                    logger.warning(
+                        f"[{agent_name}] Gemini text {key_label} lan {attempt} that bai: {e}"
+                        f"{' (RATE LIMIT)' if is_rl else ''}"
+                    )
+                    if is_rl:
+                        if key_idx < n_keys - 1:
+                            logger.info(
+                                f"[{agent_name}] Key {key_idx + 1} bi rate limit, "
+                                f"chuyen sang key {key_idx + 2}..."
+                            )
+                        break
+                    elif attempt < max_retries:
+                        await asyncio.sleep(_get_backoff_seconds(attempt, False))
 
     if settings.groq_api_key:
         for attempt in range(1, max_retries + 1):
@@ -409,11 +454,11 @@ async def call_llm_text(
     )
 
 
-def _call_gemini_text_sync(system_prompt: str, user_content: str) -> str:
-    """Goi Gemini tra ve plain text (khong ep JSON)."""
+def _call_gemini_text_sync(system_prompt: str, user_content: str, api_key: str) -> str:
+    """Goi Gemini tra ve plain text (khong ep JSON) voi api_key cu the."""
     from google.genai import types
 
-    client = _get_gemini_client()
+    client = _get_gemini_client(api_key)
     response = client.models.generate_content(
         model=settings.gemini_model,
         contents=user_content,

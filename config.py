@@ -65,7 +65,11 @@ class Settings(BaseSettings):
     # === LLM ===
     gemini_api_key: str = Field(
         default="",
-        description="API key cua Google Gemini"
+        description="API key chinh cua Google Gemini"
+    )
+    gemini_api_keys: str = Field(
+        default="",
+        description="Danh sach Gemini API keys luan phien, phan cach bang dau phay. VD: key1,key2,key3"
     )
     groq_api_key: str = Field(
         default="",
