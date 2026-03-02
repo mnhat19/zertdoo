@@ -11,13 +11,11 @@ google-auth-httplib2==0.2.0
 google-genai==1.65.0
 groq==0.15.0
 
-# === Telegram ===
-python-telegram-bot==21.10
+# python-telegram-bot da xoa (qua nang, khong su dung - thay bang httpx thuan)
 
 # === Database ===
 asyncpg==0.30.0
-psycopg-binary==3.2.4
-psycopg==3.2.4
+# psycopg da xoa (khong su dung, chi dung asyncpg)
 
 # === Scheduler ===
 apscheduler==3.11.0

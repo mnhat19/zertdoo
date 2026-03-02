@@ -45,10 +45,11 @@ async def init_pool() -> asyncpg.Pool:
     _pool = await asyncpg.create_pool(
         dsn=dsn,
         min_size=1,
-        max_size=5,
+        max_size=3,        # Giam tu 5 xuong 3 de tiet kiem RAM (free tier 512MB)
         command_timeout=30,
+        max_inactive_connection_lifetime=300,  # Dong connection nhan roi sau 5 phut
     )
-    logger.info("Database connection pool da khoi tao (min=1, max=5).")
+    logger.info("Database connection pool da khoi tao (min=1, max=3).")
     return _pool
 
 
