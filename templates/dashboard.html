@@ -215,6 +215,98 @@
             background: #333;
             color: #fff;
         }
+
+        /* Notification Bell */
+        .notif-bell-wrap {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+        }
+        .notif-bell-btn {
+            background: #2a2a2a;
+            color: #ccc;
+            border: 1px solid #333;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .notif-bell-btn:hover { background: #333; color: #fff; }
+        .notif-badge {
+            background: #f44336;
+            color: #fff;
+            border-radius: 10px;
+            padding: 1px 6px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            min-width: 18px;
+            text-align: center;
+        }
+        .notif-badge.hidden { display: none; }
+        .notif-panel {
+            display: none;
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            width: 360px;
+            max-height: 420px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+            overflow: hidden;
+            z-index: 999;
+        }
+        .notif-panel.open { display: flex; flex-direction: column; }
+        .notif-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 14px;
+            border-bottom: 1px solid #2a2a2a;
+            font-size: 0.85rem;
+            color: #bbb;
+        }
+        .notif-panel-header button {
+            background: none;
+            border: none;
+            color: #777;
+            font-size: 0.75rem;
+            cursor: pointer;
+        }
+        .notif-panel-header button:hover { color: #aaa; }
+        .notif-list {
+            overflow-y: auto;
+            flex: 1;
+        }
+        .notif-item {
+            padding: 10px 14px;
+            border-bottom: 1px solid #222;
+            font-size: 0.82rem;
+            color: #ccc;
+        }
+        .notif-item.unread { background: #1e2430; }
+        .notif-item .notif-title { font-weight: 600; color: #90caf9; margin-bottom: 2px; }
+        .notif-item .notif-body { color: #aaa; line-height: 1.4; }
+        .notif-item .notif-time { color: #555; font-size: 0.72rem; margin-top: 3px; }
+        .notif-empty { padding: 24px 14px; text-align: center; color: #555; font-size: 0.85rem; }
+
+        /* Push subscribe button */
+        .push-btn {
+            background: #2a2a2a;
+            color: #ccc;
+            border: 1px solid #333;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        .push-btn:hover { background: #333; color: #fff; }
+        .push-btn.subscribed { border-color: #4caf50; color: #4caf50; }
+        .push-btn.subscribed:hover { background: #1a2e1a; }
     </style>
 </head>
 <body>
@@ -247,6 +339,27 @@
                 {% endif %}
 
                 <button class="refresh-btn" onclick="location.reload()">Refresh</button>
+
+                <!-- Push notification subscribe -->
+                <button class="push-btn" id="push-btn" onclick="togglePushSubscription()" title="Bat/tat thong bao dong bo">
+                    Thong bao: --
+                </button>
+
+                <!-- Notification bell -->
+                <div class="notif-bell-wrap" id="notif-wrap">
+                    <button class="notif-bell-btn" onclick="toggleNotifPanel()" title="Xem thong bao dong bo">
+                        Lich su <span class="notif-badge hidden" id="notif-badge">0</span>
+                    </button>
+                    <div class="notif-panel" id="notif-panel">
+                        <div class="notif-panel-header">
+                            <span>Thong bao dong bo (30 gan nhat)</span>
+                            <button onclick="markAllRead()">Danh dau da doc</button>
+                        </div>
+                        <div class="notif-list" id="notif-list">
+                            <div class="notif-empty">Dang tai...</div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </header>
 
@@ -385,7 +498,7 @@
     </div>
 
     <script>
-        // Format uptime
+        // === Uptime counter ===
         function formatUptime(seconds) {
             const h = Math.floor(seconds / 3600);
             const m = Math.floor((seconds % 3600) / 60);
@@ -397,16 +510,194 @@
 
         let uptimeSeconds = {{ uptime_seconds }};
         const uptimeEl = document.getElementById('uptime-value');
-        const uptimeSub = document.getElementById('uptime-sub');
         uptimeEl.textContent = formatUptime(uptimeSeconds);
-
         setInterval(() => {
             uptimeSeconds++;
             uptimeEl.textContent = formatUptime(uptimeSeconds);
         }, 1000);
 
-        // Auto refresh moi 60 giay
-        setTimeout(() => location.reload(), 60000);
+        // Auto refresh moi 90 giay
+        setTimeout(() => location.reload(), 90000);
+
+        // ============================================================
+        // NOTIFICATIONS
+        // ============================================================
+
+        let notifPanelOpen = false;
+
+        function toggleNotifPanel() {
+            notifPanelOpen = !notifPanelOpen;
+            const panel = document.getElementById('notif-panel');
+            panel.classList.toggle('open', notifPanelOpen);
+            if (notifPanelOpen) loadNotifications();
+        }
+
+        // Dong panel khi click ra ngoai
+        document.addEventListener('click', (e) => {
+            if (!document.getElementById('notif-wrap').contains(e.target)) {
+                notifPanelOpen = false;
+                document.getElementById('notif-panel').classList.remove('open');
+            }
+        });
+
+        async function loadNotifications() {
+            try {
+                const res = await fetch('/api/notifications?limit=30');
+                const data = await res.json();
+                renderNotifications(data.notifications || [], data.unread_count || 0);
+            } catch (e) {
+                document.getElementById('notif-list').innerHTML =
+                    '<div class="notif-empty">Loi tai thong bao</div>';
+            }
+        }
+
+        function renderNotifications(items, unreadCount) {
+            const badge = document.getElementById('notif-badge');
+            if (unreadCount > 0) {
+                badge.textContent = unreadCount;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+
+            const list = document.getElementById('notif-list');
+            if (!items.length) {
+                list.innerHTML = '<div class="notif-empty">Chua co thong bao nao</div>';
+                return;
+            }
+
+            list.innerHTML = items.map(n => {
+                const dt = n.created_at ? new Date(n.created_at) : null;
+                const timeStr = dt ? dt.toLocaleString('vi-VN', {
+                    day:'2-digit', month:'2-digit',
+                    hour:'2-digit', minute:'2-digit'
+                }) : '';
+                return `
+                <div class="notif-item ${n.is_read ? '' : 'unread'}">
+                    <div class="notif-title">${escHtml(n.title)}</div>
+                    <div class="notif-body">${escHtml(n.body).replace(/\n/g,'<br>')}</div>
+                    <div class="notif-time">${timeStr}</div>
+                </div>`;
+            }).join('');
+        }
+
+        function escHtml(s) {
+            return String(s)
+                .replace(/&/g,'&amp;')
+                .replace(/</g,'&lt;')
+                .replace(/>/g,'&gt;');
+        }
+
+        async function markAllRead() {
+            await fetch('/api/notifications/read-all', {method:'POST'});
+            document.getElementById('notif-badge').classList.add('hidden');
+            // Reload items
+            loadNotifications();
+        }
+
+        // Poll unread count moi 30 giay (khong can phai refresh trang)
+        async function pollUnreadCount() {
+            try {
+                const res = await fetch('/api/notifications?unread=true&limit=1');
+                const data = await res.json();
+                const badge = document.getElementById('notif-badge');
+                const cnt = data.unread_count || 0;
+                if (cnt > 0) {
+                    badge.textContent = cnt;
+                    badge.classList.remove('hidden');
+                } else {
+                    badge.classList.add('hidden');
+                }
+            } catch (e) {}
+        }
+
+        // Khoi tao: load thong bao ngay khi mo trang
+        loadNotifications();
+        setInterval(pollUnreadCount, 30000);
+
+        // ============================================================
+        // WEB PUSH SUBSCRIPTION
+        // ============================================================
+
+        let swRegistration = null;
+        const pushBtn = document.getElementById('push-btn');
+
+        async function initPush() {
+            if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+                pushBtn.textContent = 'Thong bao: khong ho tro';
+                pushBtn.disabled = true;
+                return;
+            }
+
+            try {
+                swRegistration = await navigator.serviceWorker.register('/sw.js');
+                const sub = await swRegistration.pushManager.getSubscription();
+                updatePushBtnState(sub !== null);
+            } catch (e) {
+                console.warn('SW register loi:', e);
+                pushBtn.textContent = 'Thong bao: loi';
+                pushBtn.disabled = true;
+            }
+        }
+
+        function updatePushBtnState(isSubscribed) {
+            if (isSubscribed) {
+                pushBtn.textContent = 'Thong bao: Bat';
+                pushBtn.classList.add('subscribed');
+            } else {
+                pushBtn.textContent = 'Thong bao: Tat';
+                pushBtn.classList.remove('subscribed');
+            }
+        }
+
+        async function togglePushSubscription() {
+            if (!swRegistration) return;
+
+            const existing = await swRegistration.pushManager.getSubscription();
+            if (existing) {
+                // Huy dang ky
+                await existing.unsubscribe();
+                await fetch('/api/push/unsubscribe', {
+                    method: 'DELETE',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({endpoint: existing.endpoint}),
+                });
+                updatePushBtnState(false);
+            } else {
+                // Dang ky moi
+                const keyRes = await fetch('/vapid-public-key');
+                if (!keyRes.ok) {
+                    alert('Web push chua duoc cau hinh tren server.');
+                    return;
+                }
+                const {publicKey} = await keyRes.json();
+
+                const sub = await swRegistration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: urlB64ToUint8Array(publicKey),
+                });
+
+                await fetch('/api/push/subscribe', {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify(sub.toJSON()),
+                });
+                updatePushBtnState(true);
+            }
+        }
+
+        // Chuyen doi VAPID public key tu base64url sang Uint8Array
+        function urlB64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64 = (base64String + padding).replace(/-/g,'+').replace(/_/g,'/');
+            const raw = atob(base64);
+            const arr = new Uint8Array(raw.length);
+            for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+            return arr;
+        }
+
+        // Khoi chay push init sau khi trang load xong
+        initPush();
     </script>
 </body>
 </html>

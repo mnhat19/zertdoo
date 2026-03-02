@@ -25,6 +25,9 @@ apscheduler==3.11.0
 # === Notion ===
 notion-client==2.2.1
 
+# === Web Push ===
+pywebpush>=2.0.0
+
 # === Utilities ===
 pydantic-settings==2.7.1
 httpx==0.28.1

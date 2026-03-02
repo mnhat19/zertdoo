@@ -98,6 +98,20 @@ class Settings(BaseSettings):
     gmail_recipient: str = "nhatdm234112e@st.uel.edu.vn"
     year_vision_path: str = "assets/year_vision.jpg"
 
+    # === Web Push (VAPID) ===
+    vapid_public_key: str = Field(
+        default="",
+        description="VAPID public key (base64url) cho Web Push Notifications"
+    )
+    vapid_private_key: str = Field(
+        default="",
+        description="VAPID private key (base64url DER PKCS8) cho Web Push Notifications"
+    )
+    vapid_subject: str = Field(
+        default="mailto:nhatdm234112e@st.uel.edu.vn",
+        description="Email hoac URL lien he trong VAPID claims"
+    )
+
     # === API Security ===
     api_secret_key: str = Field(
         default="",

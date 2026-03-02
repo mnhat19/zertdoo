@@ -413,3 +413,133 @@ async def save_sync_state(source: str, state_snapshot: dict) -> int:
         json.dumps(state_snapshot, ensure_ascii=False, default=str),
     )
     return row["id"]
+
+
+# ============================================================
+# WEB PUSH: Tables Migration
+# ============================================================
+
+async def create_notifications_tables() -> None:
+    """
+    Tao 2 bang neu chua ton tai:
+    - push_subscriptions: luu browser push subscription
+    - web_notifications:  luu lich su thong bao dong bo
+    Goi 1 lan trong lifespan khi server khoi dong.
+    """
+    pool = await ensure_pool()
+    if pool is None:
+        logger.warning("Khong the tao notification tables: pool None")
+        return
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS push_subscriptions (
+                id          SERIAL PRIMARY KEY,
+                endpoint    TEXT UNIQUE NOT NULL,
+                p256dh      TEXT NOT NULL,
+                auth        TEXT NOT NULL,
+                created_at  TIMESTAMPTZ DEFAULT NOW()
+            )
+            """
+        )
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS web_notifications (
+                id          SERIAL PRIMARY KEY,
+                title       TEXT NOT NULL,
+                body        TEXT NOT NULL,
+                is_read     BOOLEAN DEFAULT FALSE,
+                created_at  TIMESTAMPTZ DEFAULT NOW()
+            )
+            """
+        )
+    logger.info("Bang push_subscriptions va web_notifications da san sang.")
+
+
+# ============================================================
+# WEB PUSH: Push Subscriptions
+# ============================================================
+
+async def save_push_subscription(endpoint: str, p256dh: str, auth: str) -> int:
+    """Luu hoac cap nhat 1 browser push subscription."""
+    pool = get_pool()
+    row = await pool.fetchrow(
+        """
+        INSERT INTO push_subscriptions (endpoint, p256dh, auth)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (endpoint) DO UPDATE
+            SET p256dh = EXCLUDED.p256dh,
+                auth   = EXCLUDED.auth
+        RETURNING id
+        """,
+        endpoint, p256dh, auth,
+    )
+    return row["id"]
+
+
+async def get_push_subscriptions() -> list[dict]:
+    """Lay tat ca push subscriptions hien co."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT id, endpoint, p256dh, auth FROM push_subscriptions ORDER BY id"
+    )
+    return [dict(r) for r in rows]
+
+
+async def remove_push_subscription(endpoint: str) -> None:
+    """Xoa subscription theo endpoint (khi browser bao het han)."""
+    pool = get_pool()
+    await pool.execute(
+        "DELETE FROM push_subscriptions WHERE endpoint = $1", endpoint
+    )
+
+
+# ============================================================
+# WEB PUSH: Notifications Log
+# ============================================================
+
+async def save_web_notification(title: str, body: str) -> int:
+    """Luu 1 thong bao dong bo vao lich su."""
+    pool = get_pool()
+    row = await pool.fetchrow(
+        """
+        INSERT INTO web_notifications (title, body)
+        VALUES ($1, $2)
+        RETURNING id
+        """,
+        title, body,
+    )
+    return row["id"]
+
+
+async def get_web_notifications(limit: int = 30, unread_only: bool = False) -> list[dict]:
+    """Lay lich su thong bao, moi nhat len truoc."""
+    pool = get_pool()
+    where = "WHERE NOT is_read" if unread_only else ""
+    rows = await pool.fetch(
+        f"""
+        SELECT id, title, body, is_read, created_at
+        FROM web_notifications
+        {where}
+        ORDER BY created_at DESC
+        LIMIT $1
+        """,
+        limit,
+    )
+    return [dict(r) for r in rows]
+
+
+async def mark_notification_read(notification_id: int) -> None:
+    """Danh dau 1 thong bao la da doc."""
+    pool = get_pool()
+    await pool.execute(
+        "UPDATE web_notifications SET is_read = TRUE WHERE id = $1",
+        notification_id,
+    )
+
+
+async def mark_all_notifications_read() -> None:
+    """Danh dau tat ca thong bao la da doc."""
+    pool = get_pool()
+    await pool.execute("UPDATE web_notifications SET is_read = TRUE WHERE NOT is_read")
+

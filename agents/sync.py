@@ -438,7 +438,7 @@ async def run() -> dict:
         c for c in all_changes
         if c["type"] in ("completed", "new_task", "removed")
     ]
-    if notify_changes and settings.telegram_bot_token:
+    if notify_changes:
         await _notify_changes(notify_changes)
 
     # 6. Kiem tra deadline alerts
@@ -476,10 +476,14 @@ async def run() -> dict:
 
 
 async def _notify_changes(changes: list[dict]):
-    """Gui Telegram thong bao ve cac thay doi quan trong."""
-    from services.telegram_sender import send_message
+    """
+    Luu thong bao thay doi vao DB va gui web push notification.
+    Khong gui Telegram de giam tai.
+    """
+    from services.database import save_web_notification
+    from services.web_push import send_push_notification
 
-    lines = ["ĐỒNG BỘ - Phát hiện thay đổi:\n"]
+    lines: list[str] = []
 
     for c in changes[:10]:  # Gioi han 10 thay doi moi lan
         task = c["task"]
@@ -488,19 +492,39 @@ async def _notify_changes(changes: list[dict]):
 
         if ctype == "completed":
             name = task.get("title", "") or task.get("task", "?")
-            lines.append(f"[x] {name} (từ {source})")
+            lines.append(f"[x] {name} (tu {source})")
         elif ctype == "new_task":
             name = task.get("title", "") or task.get("task", "?")
-            lines.append(f"[+] {name} (thêm mới từ {source})")
+            lines.append(f"[+] {name} (them moi tu {source})")
         elif ctype == "removed":
             name = task.get("title", "") or task.get("task", "?")
-            lines.append(f"[-] {name} (xóa từ {source})")
+            lines.append(f"[-] {name} (xoa tu {source})")
 
     if len(changes) > 10:
-        lines.append(f"\n... và {len(changes) - 10} thay đổi khác")
+        lines.append(f"... va {len(changes) - 10} thay doi khac")
 
-    await send_message("\n".join(lines))
-    logger.info("Da gui thong bao %d thay doi qua Telegram", len(changes))
+    body = "\n".join(lines)
+
+    # Luu vao DB de hien thi tren dashboard
+    try:
+        await save_web_notification(
+            title=f"Dong bo: {len(changes)} thay doi",
+            body=body,
+        )
+    except Exception as e:
+        logger.warning("Loi luu web notification: %s", e)
+
+    # Gui web push neu co subscription
+    try:
+        sent = await send_push_notification(
+            title=f"Dong bo: {len(changes)} thay doi",
+            body=body,
+        )
+        logger.info("Da gui web push cho %d subscriptions", sent)
+    except Exception as e:
+        logger.warning("Loi gui web push: %s", e)
+
+    logger.info("Da xu ly %d thay doi -> web push (Telegram da bo qua)", len(changes))
 
 
 # ============================================================

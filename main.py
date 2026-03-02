@@ -11,13 +11,14 @@ from datetime import date
 from fastapi import FastAPI, Request, Depends, HTTPException
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from config import settings, setup_google_credentials
-from services.database import init_pool, close_pool, check_db_health
+from services.database import init_pool, close_pool, check_db_health, create_notifications_tables
 
 # === Logging ===
 logging.basicConfig(
@@ -76,6 +77,11 @@ async def lifespan(app: FastAPI):
     try:
         await init_pool()
         logger.info("Database pool da san sang.")
+        # Tao bang web push neu chua ton tai
+        try:
+            await create_notifications_tables()
+        except Exception as e:
+            logger.warning("Khong the tao notification tables: %s", e)
     except Exception as e:
         logger.error("Khong the ket noi database: %s", e)
         logger.warning("Server se chay KHONG co database.")
@@ -117,6 +123,17 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Static files (Service Worker, v.v.)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Service Worker phai o root path de co scope /
+# Phuc vu /sw.js truc tiep tu thu muc static
+@app.get("/sw.js", include_in_schema=False)
+async def service_worker():
+    """Phuc vu Service Worker o root path (bat buoc de SW co scope /)."""
+    from fastapi.responses import FileResponse
+    return FileResponse("static/sw.js", media_type="application/javascript")
 
 
 # ============================================================
@@ -306,6 +323,101 @@ async def trigger_sync():
             status_code=500,
             content={"status": "error", "detail": str(e)},
         )
+
+
+# ============================================================
+# WEB PUSH ENDPOINTS
+# ============================================================
+
+@app.get("/vapid-public-key", include_in_schema=False)
+async def get_vapid_public_key():
+    """Tra ve VAPID public key cho JavaScript subscribeuser."""
+    if not settings.vapid_public_key:
+        raise HTTPException(status_code=404, detail="Web push chua cau hinh")
+    return {"publicKey": settings.vapid_public_key}
+
+
+@app.post("/api/push/subscribe")
+async def subscribe_push(request: Request):
+    """
+    Dang ky browser push subscription.
+    Body: {"endpoint": "...", "keys": {"p256dh": "...", "auth": "..."}}
+    Khong yeu cau Bearer token de JavaScript goi duoc.
+    """
+    try:
+        body = await request.json()
+        endpoint = body.get("endpoint", "")
+        keys = body.get("keys", {})
+        p256dh = keys.get("p256dh", "")
+        auth = keys.get("auth", "")
+
+        if not endpoint or not p256dh or not auth:
+            raise HTTPException(status_code=400, detail="Thieu truong bat buoc")
+
+        from services.database import save_push_subscription
+        sub_id = await save_push_subscription(endpoint, p256dh, auth)
+        logger.info("Da luu push subscription id=%d: %s...", sub_id, endpoint[:50])
+        return {"status": "ok", "id": sub_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Loi luu push subscription: %s", e)
+        return JSONResponse(status_code=500, content={"status": "error"})
+
+
+@app.delete("/api/push/unsubscribe")
+async def unsubscribe_push(request: Request):
+    """
+    Huy dang ky push subscription.
+    Body: {"endpoint": "..."}
+    """
+    try:
+        body = await request.json()
+        endpoint = body.get("endpoint", "")
+        if not endpoint:
+            raise HTTPException(status_code=400, detail="Thieu endpoint")
+        from services.database import remove_push_subscription
+        await remove_push_subscription(endpoint)
+        return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Loi xoa push subscription: %s", e)
+        return JSONResponse(status_code=500, content={"status": "error"})
+
+
+@app.get("/api/notifications")
+async def get_notifications(unread: bool = False, limit: int = 30):
+    """
+    Lay danh sach thong bao dong bo.
+    ?unread=true  -> chi tra ve chua doc
+    ?limit=N      -> gioi han so luong (max 100)
+    """
+    try:
+        from services.database import get_web_notifications
+        limit = min(limit, 100)
+        items = await get_web_notifications(limit=limit, unread_only=unread)
+        # Convert datetime sang string
+        for item in items:
+            if item.get("created_at"):
+                item["created_at"] = item["created_at"].isoformat()
+        unread_count = sum(1 for i in items if not i.get("is_read"))
+        return {"status": "ok", "notifications": items, "unread_count": unread_count}
+    except Exception as e:
+        logger.error("Loi lay notifications: %s", e)
+        return JSONResponse(status_code=500, content={"status": "error"})
+
+
+@app.post("/api/notifications/read-all")
+async def mark_all_read():
+    """Danh dau tat ca thong bao la da doc."""
+    try:
+        from services.database import mark_all_notifications_read
+        await mark_all_notifications_read()
+        return {"status": "ok"}
+    except Exception as e:
+        logger.error("Loi mark all read: %s", e)
+        return JSONResponse(status_code=500, content={"status": "error"})
 
 
 # === ReportAgent manual triggers ===
