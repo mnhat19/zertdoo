@@ -620,11 +620,31 @@
         // ============================================================
 
         let swRegistration = null;
+        let vapidAvailable = false;
         const pushBtn = document.getElementById('push-btn');
 
         async function initPush() {
+            // Kiem tra xem VAPID co duoc cau hinh tren server khong
+            try {
+                const keyRes = await fetch('/vapid-public-key');
+                vapidAvailable = keyRes.ok;
+            } catch (e) {
+                vapidAvailable = false;
+            }
+
+            if (!vapidAvailable) {
+                // Web push khong co VAPID key - chi dung in-app notification
+                pushBtn.textContent = 'Thong bao: Chi in-app';
+                pushBtn.title = 'Web Push chua duoc cau hinh. Thong bao dong bo se hien thi trong lich su.';
+                pushBtn.disabled = false;
+                pushBtn.onclick = () => {
+                    alert('Thong bao push tren may chua duoc bat.\nBan van co the xem lich su dong bo bang cach nhan "Lich su".');
+                };
+                return;
+            }
+
             if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-                pushBtn.textContent = 'Thong bao: khong ho tro';
+                pushBtn.textContent = 'Thong bao: Khong ho tro';
                 pushBtn.disabled = true;
                 return;
             }
@@ -635,8 +655,8 @@
                 updatePushBtnState(sub !== null);
             } catch (e) {
                 console.warn('SW register loi:', e);
-                pushBtn.textContent = 'Thong bao: loi';
-                pushBtn.disabled = true;
+                pushBtn.textContent = 'Thong bao: Loi SW';
+                pushBtn.title = e.message;
             }
         }
 
@@ -644,13 +664,16 @@
             if (isSubscribed) {
                 pushBtn.textContent = 'Thong bao: Bat';
                 pushBtn.classList.add('subscribed');
+                pushBtn.title = 'Dang nhan thong bao day. Bam de tat.';
             } else {
                 pushBtn.textContent = 'Thong bao: Tat';
                 pushBtn.classList.remove('subscribed');
+                pushBtn.title = 'Bam de bat thong bao day len may.';
             }
         }
 
         async function togglePushSubscription() {
+            if (!vapidAvailable) return;
             if (!swRegistration) return;
 
             const existing = await swRegistration.pushManager.getSubscription();
@@ -665,24 +688,25 @@
                 updatePushBtnState(false);
             } else {
                 // Dang ky moi
-                const keyRes = await fetch('/vapid-public-key');
-                if (!keyRes.ok) {
-                    alert('Web push chua duoc cau hinh tren server.');
-                    return;
+                try {
+                    const keyRes = await fetch('/vapid-public-key');
+                    const {publicKey} = await keyRes.json();
+
+                    const sub = await swRegistration.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: urlB64ToUint8Array(publicKey),
+                    });
+
+                    await fetch('/api/push/subscribe', {
+                        method: 'POST',
+                        headers: {'Content-Type':'application/json'},
+                        body: JSON.stringify(sub.toJSON()),
+                    });
+                    updatePushBtnState(true);
+                } catch (e) {
+                    console.error('Dang ky push loi:', e);
+                    alert('Khong the bat thong bao: ' + e.message);
                 }
-                const {publicKey} = await keyRes.json();
-
-                const sub = await swRegistration.pushManager.subscribe({
-                    userVisibleOnly: true,
-                    applicationServerKey: urlB64ToUint8Array(publicKey),
-                });
-
-                await fetch('/api/push/subscribe', {
-                    method: 'POST',
-                    headers: {'Content-Type':'application/json'},
-                    body: JSON.stringify(sub.toJSON()),
-                });
-                updatePushBtnState(true);
             }
         }
 

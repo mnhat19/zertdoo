@@ -289,7 +289,12 @@ async def save_task_log(
     scheduled_time_slot: str = None,
     duration_minutes: int = None,
 ) -> int:
-    """Them 1 task log moi. Tra ve id."""
+    """
+    Upsert 1 task log.
+    - Neu da ton tai (task_name + scheduled_date + source) -> cap nhat time_slot, duration, priority.
+    - Neu status hien tai la 'done' -> KHONG ghi de (giu nguyen).
+    Tra ve id.
+    """
     pool = get_pool()
     row = await pool.fetchrow(
         """
@@ -297,6 +302,18 @@ async def save_task_log(
             (task_name, source, sheet_name, category, priority,
              status, scheduled_date, scheduled_time_slot, duration_minutes)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        ON CONFLICT (task_name, scheduled_date, source)
+        DO UPDATE SET
+            sheet_name          = EXCLUDED.sheet_name,
+            category            = EXCLUDED.category,
+            priority            = EXCLUDED.priority,
+            scheduled_time_slot = EXCLUDED.scheduled_time_slot,
+            duration_minutes    = EXCLUDED.duration_minutes,
+            -- Khong ghi de status neu da done
+            status = CASE
+                WHEN task_logs.status = 'done' THEN task_logs.status
+                ELSE EXCLUDED.status
+            END
         RETURNING id
         """,
         task_name, source, sheet_name, category, priority,

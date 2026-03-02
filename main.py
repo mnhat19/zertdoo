@@ -498,19 +498,25 @@ async def dashboard(request: Request):
         try:
             context["db_available"] = True
 
-            # Tasks hom nay
+            # Tasks hom nay - lay ban ghi moi nhat moi task (dedup)
             today = date.today()
             today_rows = await pool.fetch(
                 """
-                SELECT task_name, source, category, priority, status,
+                SELECT DISTINCT ON (task_name)
+                       task_name, source, category, priority, status,
                        scheduled_time_slot, duration_minutes
                 FROM task_logs
                 WHERE scheduled_date = $1
-                ORDER BY scheduled_time_slot ASC NULLS LAST
+                ORDER BY task_name, id DESC
                 """,
                 today,
             )
-            context["today_tasks"] = [dict(r) for r in today_rows]
+            # Sap xep theo time_slot sau khi dedup
+            today_list = sorted(
+                [dict(r) for r in today_rows],
+                key=lambda r: r.get("scheduled_time_slot") or "99:99"
+            )
+            context["today_tasks"] = today_list
 
             # Thong ke 30 ngay
             from services.database import get_behavior_stats
