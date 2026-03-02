@@ -292,19 +292,11 @@ async def trigger_morning_summary():
     return {"status": "ok"}
 
 
-@app.post("/api/telegram/afternoon", dependencies=[Depends(verify_api_key)])
-async def trigger_afternoon_reminder():
-    """Chay afternoon reminder thu cong."""
-    from agents.telegram import send_afternoon_reminder
-    await send_afternoon_reminder()
-    return {"status": "ok"}
-
-
-@app.post("/api/telegram/evening", dependencies=[Depends(verify_api_key)])
-async def trigger_evening_review():
-    """Chay evening review thu cong."""
-    from agents.telegram import send_evening_review
-    await send_evening_review()
+@app.post("/api/telegram/risk-alert", dependencies=[Depends(verify_api_key)])
+async def trigger_risk_alert():
+    """Chay risk alert thu cong."""
+    from agents.telegram import send_risk_alert
+    await send_risk_alert(forced=True)
     return {"status": "ok"}
 
 
@@ -582,38 +574,37 @@ def _setup_scheduler():
     if settings.telegram_bot_token:
         from agents.telegram import (
             run_morning_summary_async,
-            run_afternoon_reminder_async,
-            run_evening_review_async,
+            run_risk_alert_async,
         )
 
-        # 6:15 AM: tom tat lich ngay (sau khi SchedulerAgent chay)
+        # 6:15 AM: ban nhap lich ngay + cac cau hoi xac nhan
         scheduler.add_job(
             run_morning_summary_async,
             trigger=CronTrigger(hour=6, minute=15, timezone="Asia/Ho_Chi_Minh"),
             id="telegram_morning",
-            name="Telegram morning summary",
+            name="Telegram morning draft + confirm",
             replace_existing=True,
         )
 
-        # 12:00 PM: nhac tasks buoi chieu
+        # 11:30: kiem tra tasks co nguy co bi quen truoc buoi chieu
         scheduler.add_job(
-            run_afternoon_reminder_async,
-            trigger=CronTrigger(hour=12, minute=0, timezone="Asia/Ho_Chi_Minh"),
-            id="telegram_afternoon",
-            name="Telegram afternoon reminder",
+            run_risk_alert_async,
+            trigger=CronTrigger(hour=11, minute=30, timezone="Asia/Ho_Chi_Minh"),
+            id="telegram_risk_noon",
+            name="Telegram risk alert noon",
             replace_existing=True,
         )
 
-        # 21:00: review cuoi ngay
+        # 20:00: kiem tra tasks co nguy co bi quen cuoi ngay
         scheduler.add_job(
-            run_evening_review_async,
-            trigger=CronTrigger(hour=21, minute=0, timezone="Asia/Ho_Chi_Minh"),
-            id="telegram_evening",
-            name="Telegram evening review",
+            run_risk_alert_async,
+            trigger=CronTrigger(hour=20, minute=0, timezone="Asia/Ho_Chi_Minh"),
+            id="telegram_risk_evening",
+            name="Telegram risk alert evening",
             replace_existing=True,
         )
 
-        logger.info("Da dang ky 3 Telegram notification jobs (6:15, 12:00, 21:00)")
+        logger.info("Da dang ky Telegram jobs: morning (6:15), risk alert (11:30, 20:00)")
 
     # SyncAgent: polling moi 15 phut
     from agents.sync import run_scheduled_async as sync_run_async

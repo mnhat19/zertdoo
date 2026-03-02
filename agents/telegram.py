@@ -588,10 +588,10 @@ async def handle_message(message_text: str, chat_id: str) -> str:
 
 async def send_morning_summary():
     """
-    Gui tom tat lich ngay vao 6:15 AM.
-    Goi sau khi SchedulerAgent chay xong.
+    Gui ban nhap lich ngay luc 6:15 AM va xin xac nhan/trao doi.
+    Nguoi dung doc, phan hoi neu muon dieu chinh - agent san sang.
     """
-    logger.info("Gui thong bao buoi sang...")
+    logger.info("Gui ban nhap lich buoi sang...")
     try:
         from services.database import get_latest_daily_plan
         import json
@@ -601,8 +601,9 @@ async def send_morning_summary():
 
         if not plan:
             await send_message(
-                f"SÁNG {format_date_vn(today)}\n\n"
-                "Chưa có kế hoạch hôm nay. SchedulerAgent có thể chưa chạy."
+                f"BAN NHÁP LỊCH {format_date_vn(today)}\n\n"
+                "Chua co ke hoach hom nay. He thong se len lich ngay sau khi co du lieu.\n"
+                "Nhan 'len lich ngay' neu muon chay ngay."
             )
             return
 
@@ -612,13 +613,13 @@ async def send_morning_summary():
 
         weekday = WEEKDAY_NAMES_FULL[today.weekday()]
         lines = [
-            f"LỊCH {weekday.upper()} {format_date_vn(today)}",
+            f"BAN NHÁP LỊCH {weekday.upper()} {format_date_vn(today)}",
             "",
         ]
 
         tasks = plan_json.get("daily_tasks", [])
         if tasks:
-            lines.append(f"--- {len(tasks)} NHIỆM VỤ ---")
+            lines.append(f"--- {len(tasks)} NHIEM VU ---")
             for t in sorted(tasks, key=lambda x: x.get("priority_rank", 99)):
                 rank = t.get("priority_rank", "?")
                 slot = t.get("time_slot", "?")
@@ -626,153 +627,115 @@ async def send_morning_summary():
                 dur = t.get("duration_minutes", "?")
                 lines.append(f"{rank}. [{slot}] {title} ({dur}p)")
 
+        reasoning = plan_json.get("overall_reasoning", "")
+        if reasoning:
+            lines.append("")
+            lines.append(f"LY DO SAP XEP: {reasoning[:300]}")
+
         risks = plan_json.get("risks", [])
         if risks:
-            lines.append("\n--- LƯU Ý ---")
-            for r in risks:
+            lines.append("")
+            lines.append("LUU Y:")
+            for r in risks[:3]:
                 lines.append(f"- {r}")
 
         questions = plan_json.get("questions_for_user", [])
         if questions:
-            lines.append("\n--- CẦN XÁC NHẬN ---")
-            for q in questions:
+            lines.append("")
+            lines.append("CAN XAC NHAN:")
+            for q in questions[:3]:
                 lines.append(f"- {q}")
 
-        await send_message("\n".join(lines))
-        logger.info("Da gui thong bao buoi sang")
-
-    except Exception as e:
-        logger.error("Loi gui thong bao buoi sang: %s", e, exc_info=True)
-
-
-async def send_afternoon_reminder():
-    """
-    Gui nhac buoi chieu vao 12:00.
-    Liet ke tasks con lai chua xong.
-    """
-    logger.info("Gui nhac buoi chieu...")
-    try:
-        from services.database import get_latest_daily_plan
-        import json
-
-        today = today_vn()
-        plan = await get_latest_daily_plan(today)
-        if not plan:
-            return
-
-        plan_json = plan.get("plan_json", {})
-        if isinstance(plan_json, str):
-            plan_json = json.loads(plan_json)
-
-        tasks = plan_json.get("daily_tasks", [])
-        # Loc tasks buoi chieu (time_slot bat dau tu 12:00 tro di)
-        afternoon_tasks = []
-        for t in tasks:
-            slot = t.get("time_slot", "")
-            if slot:
-                start_hour = slot.split(":")[0].strip()
-                try:
-                    if int(start_hour) >= 12:
-                        afternoon_tasks.append(t)
-                except ValueError:
-                    pass
-
-        if not afternoon_tasks:
-            # Khong co task buoi chieu -> thong bao tat ca tasks con lai
-            await send_message(
-                f"GIỮA NGÀY {format_date_vn(today)}\n\n"
-                "Không có nhiệm vụ buổi chiều được lên lịch."
-            )
-            return
-
-        lines = [
-            f"GIỮA NGÀY {format_date_vn(today)}",
-            f"",
-            f"--- {len(afternoon_tasks)} NHIỆM VỤ BUỔI CHIỀU ---",
-        ]
-        for t in sorted(afternoon_tasks, key=lambda x: x.get("priority_rank", 99)):
-            rank = t.get("priority_rank", "?")
-            slot = t.get("time_slot", "?")
-            title = t.get("title", "?")
-            dur = t.get("duration_minutes", "?")
-            lines.append(f"{rank}. [{slot}] {title} ({dur}p)")
-
         lines.append("")
-        lines.append("Phản hồi nếu cần điều chỉnh.")
+        lines.append("Nhan tin neu muon dieu chinh, doi lich, hoi them, hoac xac nhan.")
 
         await send_message("\n".join(lines))
-        logger.info("Da gui nhac buoi chieu")
+        logger.info("Da gui ban nhap lich buoi sang")
 
     except Exception as e:
-        logger.error("Loi gui nhac buoi chieu: %s", e, exc_info=True)
+        logger.error("Loi gui ban nhap lich: %s", e, exc_info=True)
 
 
-async def send_evening_review():
+async def send_risk_alert(forced: bool = False):
     """
-    Gui review cuoi ngay vao 21:00.
-    Tom tat: nhung gi da xong, chua xong, de xuat.
+    Phat hien va bao ngay 1-2 nhiem vu co nguy co bi quen cao nhat.
+
+    Tieu chi:
+    - Priority High + Due trong 2 ngay + status chua done
+    - Hoac: chua co time_slot (chua vao lich) nhung due gan
+    - Hoac: da bị reschedule nhieu lan
+
+    Args:
+        forced: True = gui du co nhiem vu hay khong (de test)
     """
-    logger.info("Gui review cuoi ngay...")
+    logger.info("Kiem tra risk alert...")
     try:
-        from services.database import get_latest_daily_plan, get_recent_task_logs
+        from services.database import get_recent_task_logs, get_latest_daily_plan
+        from services.google_sheets import read_all_sheets
         import json
 
         today = today_vn()
+        at_risk: list[dict] = []
+
+        # Nguon 1: task_logs chua done, qua han hoac sap den han
+        logs = await get_recent_task_logs(days=7)
+        overdue = []
+        for log in logs:
+            status = log.get("status", "")
+            if status in ("done", "completed", "skipped"):
+                continue
+            sched = log.get("scheduled_date")
+            if sched and sched < today:
+                overdue.append({
+                    "name": log.get("task_name", "?"),
+                    "reason": f"qua han tu {sched}",
+                    "priority": log.get("priority", "?"),
+                })
+        # Chi lay 2 overdue quan trong nhat
+        at_risk.extend(sorted(overdue, key=lambda x: x["priority"])[:2])
+
+        # Nguon 2: task trong plan hom nay chua co time_slot hoac bị kep lich
         plan = await get_latest_daily_plan(today)
-        if not plan:
+        if plan:
+            plan_json = plan.get("plan_json", {})
+            if isinstance(plan_json, str):
+                plan_json = json.loads(plan_json)
+            tasks = plan_json.get("daily_tasks", [])
+
+            # Tim tasks High priority ma chua co khung gio
+            for t in tasks:
+                if (t.get("priority_rank", 99) <= 2
+                        and not t.get("time_slot")
+                        and t.get("title")):
+                    if len(at_risk) < 3:
+                        at_risk.append({
+                            "name": t["title"],
+                            "reason": "chua co khung gio, co the bi bo qua",
+                            "priority": "High",
+                        })
+
+        if not at_risk and not forced:
+            logger.info("Khong co task co nguy co cao, bo qua alert")
             return
 
-        plan_json = plan.get("plan_json", {})
-        if isinstance(plan_json, str):
-            plan_json = json.loads(plan_json)
-
-        tasks = plan_json.get("daily_tasks", [])
-        total = len(tasks)
-
-        # Lay task logs hom nay de kiem tra trang thai
-        logs = await get_recent_task_logs(days=1)
-        completed_names = set()
-        for log in logs:
-            if log.get("status") == "completed":
-                completed_names.add(log.get("task_name", "").lower())
-
-        done_tasks = []
-        remaining_tasks = []
-        for t in tasks:
-            title = t.get("title", "")
-            if title.lower() in completed_names:
-                done_tasks.append(t)
-            else:
-                remaining_tasks.append(t)
-
         lines = [
-            f"TỔNG KẾT NGÀY {format_date_vn(today)}",
+            f"NHAC NHO QUAN TRONG - {format_date_vn(today)}",
+            "",
+            "Nhung nhiem vu co nguy co bi quen hoac bo qua:",
             "",
         ]
+        for i, t in enumerate(at_risk[:3], 1):
+            lines.append(f"{i}. {t['name']}")
+            lines.append(f"   Ly do: {t['reason']}")
 
-        if done_tasks:
-            lines.append(f"--- ĐÃ HOÀN THÀNH ({len(done_tasks)}/{total}) ---")
-            for t in done_tasks:
-                lines.append(f"  [x] {t.get('title', '?')}")
-
-        if remaining_tasks:
-            lines.append(f"\n--- CHƯA XONG ({len(remaining_tasks)}/{total}) ---")
-            for t in remaining_tasks:
-                slot = t.get("time_slot", "?")
-                lines.append(f"  [ ] [{slot}] {t.get('title', '?')}")
-
-        if remaining_tasks:
-            lines.append("\nNhững task chưa xong sẽ được xem xét lại ngày mai.")
-            lines.append("Nhắn tin nếu muốn điều chỉnh.")
-
-        if not done_tasks and not remaining_tasks:
-            lines.append("Không có dữ liệu để tổng kết.")
+        lines.append("")
+        lines.append("Phan hoi de xu ly ngay hoac de system tu dieu chinh.")
 
         await send_message("\n".join(lines))
-        logger.info("Da gui review cuoi ngay")
+        logger.info("Da gui risk alert cho %d tasks", len(at_risk))
 
     except Exception as e:
-        logger.error("Loi gui review cuoi ngay: %s", e, exc_info=True)
+        logger.error("Loi gui risk alert: %s", e, exc_info=True)
 
 
 # ============================================================
@@ -788,19 +751,10 @@ async def run_morning_summary_async():
         logger.error("Loi morning summary: %s", e, exc_info=True)
 
 
-async def run_afternoon_reminder_async():
-    """Async wrapper cho AsyncIOScheduler."""
-    logger.info("APScheduler trigger: afternoon reminder")
+async def run_risk_alert_async():
+    """Async wrapper cho AsyncIOScheduler - chay 2 lan/ngay."""
+    logger.info("APScheduler trigger: risk alert")
     try:
-        await send_afternoon_reminder()
+        await send_risk_alert()
     except Exception as e:
-        logger.error("Loi afternoon reminder: %s", e, exc_info=True)
-
-
-async def run_evening_review_async():
-    """Async wrapper cho AsyncIOScheduler."""
-    logger.info("APScheduler trigger: evening review")
-    try:
-        await send_evening_review()
-    except Exception as e:
-        logger.error("Loi evening review: %s", e, exc_info=True)
+        logger.error("Loi risk alert: %s", e, exc_info=True)

@@ -705,18 +705,13 @@ async def run() -> dict:
     if notify_changes:
         await _notify_changes(notify_changes)
 
-    # 6. Kiem tra deadline alerts (qua Telegram)
-    try:
-        await _check_deadline_alerts(sheets_snapshot)
-    except Exception as e:
-        logger.error("Loi kiem tra deadline: %s", e)
-
-    # 7. Luu snapshots (kể ca phan da duoc cap nhat in-memory o 4b/4c)
+    # 6. Luu snapshots (ke ca phan da duoc cap nhat in-memory o 4b/4c)
+    # (Deadline alert da chuyen sang send_risk_alert() trong APScheduler)
     await save_sync_state("google_tasks", tasks_snapshot)
     await save_sync_state("google_sheets", sheets_snapshot)
     logger.info("Da luu sync snapshots moi")
 
-    # 8. Log
+    # 7. Log
     try:
         from services.database import log_agent
         await log_agent(

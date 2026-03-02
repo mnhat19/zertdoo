@@ -443,25 +443,26 @@ async def run_scheduled_async():
     """
     Async wrapper cho AsyncIOScheduler.
     Chay tren cung event loop voi FastAPI, truy cap DB pool truc tiep.
+
+    Khong gui Telegram o day - viec do thuoc ve send_morning_summary()
+    chay luc 6:15 AM (sau khi co du lieu de trinh bay dep hon).
     """
     logger.info("APScheduler trigger: chay SchedulerAgent...")
     try:
         result = await run()
-        logger.info("SchedulerAgent chay xong. Summary:\n%s", result["summary"][:500])
-        # Gui summary qua Telegram
-        try:
-            from services.telegram_sender import send_message
-            await send_message(result["summary"])
-            logger.info("Da gui summary qua Telegram")
-        except Exception as te:
-            logger.error("Loi gui Telegram: %s", te)
+        logger.info(
+            "SchedulerAgent chay xong: %d tasks, %d events, plan_id=%d",
+            len(result["plan"].daily_tasks),
+            len(result["event_ids"]),
+            result["plan_id"],
+        )
     except Exception as e:
         logger.error("SchedulerAgent loi: %s", e, exc_info=True)
-        # Gui thong bao loi qua Telegram
+        # Chi gui Telegram khi co loi nghiem trong
         try:
             from services.telegram_sender import send_message
             await send_message(
-                f"[LỖI] SchedulerAgent thất bại: {type(e).__name__}: {e}"
+                f"[LOI] SchedulerAgent that bai: {type(e).__name__}: {e}"
             )
         except Exception:
             pass
