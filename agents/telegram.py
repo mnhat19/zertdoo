@@ -264,37 +264,101 @@ async def _execute_actions(actions: list[TelegramAction]) -> list[str]:
 
 
 async def _action_complete_task(params: dict, loop) -> str:
-    """Danh dau task hoan thanh trong Google Tasks."""
+    """
+    Danh dau task hoan thanh:
+      1. Google Tasks -> completed
+      2. Google Sheet -> cap nhat cot F = 'Done'
+      3. Postgres task_logs -> cap nhat status = 'done'
+    """
     from services.google_tasks import (
         get_all_task_lists, get_tasks_from_list, complete_task,
     )
+    from agents.sync import _names_match, _clean_task_name
 
     task_title = params.get("task_title", "")
     if not task_title:
         return "[Bỏ qua] Không có task_title"
 
-    # Tim task theo title
+    completed_title = task_title  # Ten chinh xac sau khi tim thay
+
+    # 1. Tim va hoan thanh trong Google Tasks
     def _find_and_complete():
         lists = get_all_task_lists()
         for tl in lists:
             tasks = get_tasks_from_list(tl["id"])
             for t in tasks:
-                if task_title.lower() in t.title.lower():
+                clean = _clean_task_name(t.title)
+                if _names_match(task_title, clean):
                     complete_task(tl["id"], t.task_id)
-                    return f"Đã hoàn thành: {t.title}"
-        return f"Không tìm thấy task: {task_title}"
+                    return t.title, True
+        return task_title, False
 
-    result = await loop.run_in_executor(None, _find_and_complete)
+    raw_title, found_in_tasks = await loop.run_in_executor(None, _find_and_complete)
+    completed_title = _clean_task_name(raw_title)
 
-    # Log vao DB
+    if found_in_tasks:
+        result_msg = f"Da hoan thanh: {completed_title}"
+    else:
+        result_msg = f"Khong tim thay trong Tasks: {task_title}"
+
+    # 2. Cap nhat Google Sheet
+    sheet_synced = False
+    try:
+        from services.google_sheets import find_task_in_sheets, update_task_status_in_sheet
+        found_sheet = await loop.run_in_executor(None, find_task_in_sheets, completed_title)
+        if found_sheet and found_sheet.get("status", "").lower() not in ("done", "completed"):
+            ok = await loop.run_in_executor(
+                None,
+                update_task_status_in_sheet,
+                found_sheet["sheet_name"],
+                found_sheet["task"],
+                "Done",
+            )
+            sheet_synced = ok
+            if ok:
+                logger.info("Telegram->Sheet: '%s' -> Done", completed_title)
+    except Exception as e:
+        logger.warning("Loi cap nhat Sheet tu Telegram: %s", e)
+
+    # 3. Cap nhat Postgres task_logs
+    db_synced = False
+    try:
+        from services.database import get_recent_task_logs, update_task_status
+        recent_logs = await get_recent_task_logs(days=14)
+        for log in recent_logs:
+            if _names_match(completed_title, log.get("task_name", "")) and \
+               log.get("status") not in ("done", "completed"):
+                await update_task_status(log["id"], "done")
+                db_synced = True
+                logger.info("Telegram->DB: '%s' -> done (id=%d)", completed_title, log["id"])
+                break
+    except Exception as e:
+        logger.warning("Loi cap nhat DB tu Telegram: %s", e)
+
+    # 4. Log hanh vi
     try:
         from services.database import log_behavior
-        await log_behavior("complete_task", {"task_title": task_title, "result": result})
+        await log_behavior("complete_task", {
+            "task_title": completed_title,
+            "found_in_tasks": found_in_tasks,
+            "sheet_synced": sheet_synced,
+            "db_synced": db_synced,
+        })
     except Exception:
         pass
 
-    logger.info("Action complete_task: %s", result)
-    return result
+    logger.info("Action complete_task: %s (sheet=%s, db=%s)", result_msg, sheet_synced, db_synced)
+
+    # Them thong tin dong bo vao phan hoi
+    details = []
+    if sheet_synced:
+        details.append("da cap nhat Sheet")
+    if db_synced:
+        details.append("da cap nhat Postgres")
+    if details:
+        result_msg += f" ({', '.join(details)})"
+
+    return result_msg
 
 
 async def _action_create_task(params: dict, loop) -> str:

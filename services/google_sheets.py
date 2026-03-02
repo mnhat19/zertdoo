@@ -110,6 +110,129 @@ def read_all_sheets(spreadsheet_id: str = None) -> list[TaskItem]:
     return all_tasks
 
 
+def update_task_status_in_sheet(
+    sheet_name: str,
+    task_name: str,
+    new_status: str,
+    spreadsheet_id: str = None,
+) -> bool:
+    """
+    Cap nhat cot F (Status) cho task co ten khop trong worksheet.
+
+    Tim bang fuzzy match (lowercase, strip whitespace).
+    Neu tim thay, cap nhat cell tuong ung bang Google Sheets API.
+
+    Args:
+        sheet_name:  Ten worksheet (VD: "In_class")
+        task_name:   Ten task can cap nhat (khop voi cot B)
+        new_status:  Gia tri moi cho cot F (VD: "Done", "Pending", "Reschedule")
+        spreadsheet_id: ID spreadsheet (mac dinh tu config)
+
+    Returns:
+        True neu tim thay va cap nhat thanh cong, False neu khong tim thay.
+    """
+    sid = spreadsheet_id or settings.google_spreadsheet_id
+    if not sid or not sheet_name or not task_name:
+        return False
+
+    service = _get_sheets_service()
+
+    # Doc toan bo du lieu (A:F de co header va cot status)
+    range_str = f"'{sheet_name}'!A1:F"
+    try:
+        result = service.spreadsheets().values().get(
+            spreadsheetId=sid, range=range_str
+        ).execute()
+    except Exception as e:
+        logger.warning("Khong doc duoc sheet '%s': %s", sheet_name, e)
+        return False
+
+    rows = result.get("values", [])
+    if len(rows) < 2:
+        return False  # Khong co du lieu
+
+    task_name_norm = task_name.strip().lower()
+
+    for i, row in enumerate(rows):
+        if i == 0:
+            continue  # Bo qua header
+
+        # Cot B = index 1
+        cell_b = row[1].strip() if len(row) > 1 else ""
+        if not cell_b:
+            continue
+
+        # Fuzzy match: exact hoac substring
+        if cell_b.lower() == task_name_norm or task_name_norm in cell_b.lower():
+            # i la chi so trong list (0-based). Spreadsheet row = i + 1 (1-based).
+            spreadsheet_row = i + 1
+
+            # Cot F = index 5 (zero-based). Vi cot A = 1, F = 6.
+            update_range = f"'{sheet_name}'!F{spreadsheet_row}"
+            try:
+                service.spreadsheets().values().update(
+                    spreadsheetId=sid,
+                    range=update_range,
+                    valueInputOption="RAW",
+                    body={"values": [[new_status]]},
+                ).execute()
+                logger.info(
+                    "Cap nhat Sheet '%s' row %d: '%s' -> status=%s",
+                    sheet_name, spreadsheet_row, cell_b, new_status,
+                )
+                return True
+            except Exception as e:
+                logger.warning(
+                    "Loi cap nhat Sheet '%s' row %d: %s", sheet_name, spreadsheet_row, e
+                )
+                return False
+
+    logger.debug(
+        "Khong tim thay task '%s' trong sheet '%s'", task_name, sheet_name
+    )
+    return False
+
+
+def find_task_in_sheets(task_name: str, spreadsheet_id: str = None) -> Optional[dict]:
+    """
+    Tim task trong tat ca worksheets bang ten.
+    Tra ve dict voi sheet_name, task, status, priority, ... neu tim thay.
+
+    Args:
+        task_name: Ten task can tim (fuzzy match)
+        spreadsheet_id: ID spreadsheet (mac dinh tu config)
+
+    Returns:
+        dict hoac None
+    """
+    sid = spreadsheet_id or settings.google_spreadsheet_id
+    sheet_names = get_all_worksheet_names(sid)
+
+    task_name_norm = task_name.strip().lower()
+
+    for sheet_name in sheet_names:
+        try:
+            tasks = read_worksheet(sheet_name, sid)
+            for t in tasks:
+                if (
+                    t.task.strip().lower() == task_name_norm
+                    or task_name_norm in t.task.strip().lower()
+                ):
+                    return {
+                        "sheet_name": t.sheet_name,
+                        "category": t.category,
+                        "task": t.task,
+                        "status": t.status,
+                        "priority": t.priority,
+                        "due_date": t.due_date,
+                        "start_date": t.start_date,
+                    }
+        except Exception as e:
+            logger.warning("Loi tim task trong sheet '%s': %s", sheet_name, e)
+
+    return None
+
+
 def read_sheets_summary(spreadsheet_id: str = None) -> str:
     """
     Doc tat ca sheets va tra ve dang text tom tat.

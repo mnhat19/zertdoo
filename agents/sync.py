@@ -235,61 +235,293 @@ def _detect_sheets_changes(old_snapshot: dict, new_snapshot: dict) -> list[dict]
 
 
 # ============================================================
+# HELPER: TEN TASK VA FUZZY MATCH
+# ============================================================
+
+def _clean_task_name(title: str) -> str:
+    """
+    Chuan hoa ten task:
+    - Bo prefix [N] (Google Tasks dung de danh so thu tu)
+    - Strip whitespace
+    """
+    t = (title or "").strip()
+    if t.startswith("[") and "]" in t:
+        t = t.split("]", 1)[1].strip()
+    return t
+
+
+def _names_match(name_a: str, name_b: str) -> bool:
+    """
+    Kiem tra 2 ten co khop nhau khong (fuzzy).
+    - Exact match (case-insensitive)
+    - 1 ten chua ten kia
+    - Tat ca cac tu cua ten ngan co mat trong ten dai
+    """
+    a = _clean_task_name(name_a).lower()
+    b = _clean_task_name(name_b).lower()
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    if a in b or b in a:
+        return True
+    # So sanh word-level: tat ca tu cua ten ngan phai co trong ten dai
+    words_a = set(a.split())
+    words_b = set(b.split())
+    shorter = words_a if len(words_a) <= len(words_b) else words_b
+    longer = words_b if shorter is words_a else words_a
+    if len(shorter) >= 2 and shorter.issubset(longer):
+        return True
+    return False
+
+
+def _dedup_changes(changes: list[dict]) -> list[dict]:
+    """
+    Loai bo cac thay doi trung lap cung task, cung type tu nhieu nguon.
+    Giu lai ban ghi dau tien.
+    """
+    seen: set = set()
+    result = []
+    for c in changes:
+        task = c["task"]
+        raw_name = task.get("title", "") or task.get("task", "")
+        clean = _clean_task_name(raw_name).lower()
+        key = (c["type"], clean)
+        if key not in seen:
+            seen.add(key)
+            result.append(c)
+    return result
+
+
+# ============================================================
 # DONG BO VA CAP NHAT
 # ============================================================
 
-async def _sync_completion_to_db(changes: list[dict]):
+async def _sync_completion_to_db(changes: list[dict]) -> int:
     """
     Cap nhat task_logs trong Postgres khi phat hien task hoan thanh.
+    Su dung fuzzy name matching de tang do chinh xac.
+
+    Returns:
+        So task_logs da cap nhat.
     """
     from services.database import get_recent_task_logs, update_task_status
 
     if not changes:
-        return
+        return 0
 
-    # Lay task_logs gan day de match
-    recent_logs = await get_recent_task_logs(days=7)
-    logs_by_name = {}
-    for log in recent_logs:
-        name = log.get("task_name", "").lower()
-        logs_by_name.setdefault(name, []).append(log)
-
+    # Lay task_logs trong 14 ngay (mo rong tu 7 de bat nhiem vu dai han)
+    recent_logs = await get_recent_task_logs(days=14)
     updated_count = 0
+
     for change in changes:
         if change["type"] != "completed":
             continue
 
         task_info = change["task"]
-        task_name = ""
-
-        if change["source"] == "google_tasks":
-            # Title trong Google Tasks co dang "[1] Ten task"
-            raw_title = task_info.get("title", "")
-            # Bo prefix [N]
-            if raw_title.startswith("[") and "]" in raw_title:
-                task_name = raw_title.split("]", 1)[1].strip()
-            else:
-                task_name = raw_title
-        elif change["source"] == "google_sheets":
-            task_name = task_info.get("task", "")
-
+        raw_name = task_info.get("title", "") or task_info.get("task", "")
+        task_name = _clean_task_name(raw_name)
         if not task_name:
             continue
 
-        # Tim trong task_logs
-        matching_logs = logs_by_name.get(task_name.lower(), [])
-        for log in matching_logs:
-            if log.get("status") not in ("done", "completed"):
+        # Tim log chua hoan thanh khop ten nhat
+        for log in recent_logs:
+            log_name = log.get("task_name", "")
+            if _names_match(task_name, log_name) and log.get("status") not in ("done", "completed"):
                 await update_task_status(log["id"], "done")
                 updated_count += 1
                 logger.info(
-                    "Dong bo hoan thanh: '%s' (task_log id=%d, source=%s)",
+                    "Sync DB done: '%s' (task_log id=%d, nguon=%s)",
                     task_name, log["id"], change["source"],
                 )
-                break
+                break  # Chi cap nhat 1 log cho 1 task
 
     if updated_count:
         logger.info("Da dong bo %d tasks thanh 'done' trong Postgres", updated_count)
+    return updated_count
+
+
+async def _sync_tasks_completion_to_sheet(
+    completed_from_tasks: list[dict],
+    sheets_snapshot: dict,
+    loop,
+) -> int:
+    """
+    Khi task duoc tick trong Google Tasks: cap nhat cot F -> 'Done' trong Sheet.
+
+    Sau khi ghi, cap nhat in-memory sheets_snapshot de tranh phat hien lai
+    thanh 'completed' tu Sheet o lan sync tiep theo.
+
+    Returns:
+        So task da cap nhat vao Sheet.
+    """
+    from services.google_sheets import update_task_status_in_sheet
+
+    sheet_tasks = sheets_snapshot.get("tasks", [])
+    updated = 0
+
+    for change in completed_from_tasks:
+        raw_title = change["task"].get("title", "")
+        task_name = _clean_task_name(raw_title)
+        if not task_name:
+            continue
+
+        # Tim trong sheets_snapshot
+        matched: dict | None = None
+        for st in sheet_tasks:
+            if _names_match(task_name, st.get("task", "")):
+                matched = st
+                break
+
+        if not matched:
+            logger.debug("Khong tim thay '%s' trong Sheet snapshot", task_name)
+            continue
+
+        # Bo qua neu Sheet da la Done
+        if matched.get("status", "").lower() in ("done", "completed"):
+            logger.debug("Sheet '%s' da Done, bo qua", matched["task"])
+            continue
+
+        # Ghi len Google Sheet
+        try:
+            success = await loop.run_in_executor(
+                None,
+                update_task_status_in_sheet,
+                matched["sheet_name"],
+                matched["task"],
+                "Done",
+            )
+            if success:
+                # Cap nhat in-memory de snapshot luu dung trang thai moi
+                matched["status"] = "Done"
+                updated += 1
+                logger.info(
+                    "Tasks->Sheet: '%s' (sheet=%s) -> Done",
+                    matched["task"], matched["sheet_name"],
+                )
+            else:
+                logger.warning("Khong cap nhat duoc Sheet cho '%s'", task_name)
+        except Exception as e:
+            logger.warning("Loi cap nhat Sheet cho '%s': %s", task_name, e)
+
+    if updated:
+        logger.info("Tasks->Sheet: da cap nhat %d tasks thanh Done", updated)
+    return updated
+
+
+async def _sync_sheets_completion_to_tasks(
+    completed_from_sheets: list[dict],
+    tasks_snapshot: dict,
+    loop,
+) -> int:
+    """
+    Khi task bang 'Done' trong Sheet: tim task tuong ung trong Google Tasks
+    va danh dau completed.
+
+    Cap nhat in-memory tasks_snapshot sau khi ghi de tranh phat hien lai.
+
+    Returns:
+        So task da cap nhat trong Google Tasks.
+    """
+    from services.google_tasks import complete_task
+
+    google_tasks = tasks_snapshot.get("tasks", [])
+    updated = 0
+
+    for change in completed_from_sheets:
+        task_name = change["task"].get("task", "")
+        if not task_name:
+            continue
+
+        # Tim trong tasks_snapshot
+        matched: dict | None = None
+        for gt in google_tasks:
+            clean_title = _clean_task_name(gt.get("title", ""))
+            if _names_match(task_name, clean_title):
+                matched = gt
+                break
+
+        if not matched:
+            logger.debug("Khong tim thay '%s' trong Tasks snapshot", task_name)
+            continue
+
+        # Bo qua neu Tasks da completed
+        if matched.get("status", "") == "completed":
+            continue
+
+        tl_id = matched.get("task_list_id", "")
+        t_id = matched.get("task_id", "")
+        if not tl_id or not t_id:
+            continue
+
+        try:
+            success = await loop.run_in_executor(None, complete_task, tl_id, t_id)
+            if success:
+                matched["status"] = "completed"
+                updated += 1
+                logger.info(
+                    "Sheet->Tasks: '%s' (list=%s) -> completed",
+                    matched["title"], matched.get("task_list_title", "?"),
+                )
+            else:
+                logger.warning("Khong danh dau completed Tasks cho '%s'", task_name)
+        except Exception as e:
+            logger.warning("Loi danh dau Tasks cho '%s': %s", task_name, e)
+
+    if updated:
+        logger.info("Sheet->Tasks: da cap nhat %d tasks thanh completed", updated)
+    return updated
+
+
+async def _sync_status_changes_to_db(status_changes: list[dict]) -> int:
+    """
+    Khi trang thai task trong Sheet thay doi (Reschedule, Pending, Skip, ...):
+    cap nhat Postgres task_logs cho phu hop.
+
+    Returns:
+        So records da cap nhat.
+    """
+    from services.database import get_recent_task_logs, update_task_status
+
+    if not status_changes:
+        return 0
+
+    recent_logs = await get_recent_task_logs(days=14)
+    updated = 0
+
+    # Map tu Sheet status sang DB status
+    STATUS_MAP = {
+        "pending":     "pending",
+        "reschedule":  "rescheduled",
+        "rescheduled": "rescheduled",
+        "skip":        "skipped",
+        "skipped":     "skipped",
+        "done":        "done",
+        "completed":   "done",
+        "":            "pending",
+    }
+
+    for change in status_changes:
+        task_name = change["task"].get("task", "")
+        new_status_raw = change.get("new_status", "").lower()
+        db_status = STATUS_MAP.get(new_status_raw, new_status_raw or "pending")
+
+        for log in recent_logs:
+            log_name = log.get("task_name", "")
+            if _names_match(task_name, log_name):
+                current = log.get("status", "")
+                if current != db_status:
+                    await update_task_status(log["id"], db_status)
+                    logger.info(
+                        "Sheet status_changed -> DB: '%s' %s -> %s",
+                        task_name, current, db_status,
+                    )
+                    updated += 1
+                break  # Mot task chi can cap nhat 1 lan
+
+    if updated:
+        logger.info("Da dong bo %d status_changed tu Sheet vao Postgres", updated)
+    return updated
 
 
 # ============================================================
@@ -428,27 +660,58 @@ async def run() -> dict:
     else:
         logger.info("Lan dau sync Google Sheets, khong co snapshot cu")
 
-    # 4. Dong bo completions vao Postgres
+    # 4. Phan loai cac thay doi
     all_changes = tasks_changes + sheets_changes
-    completed_changes = [c for c in all_changes if c["type"] == "completed"]
-    await _sync_completion_to_db(completed_changes)
+    completed_changes      = [c for c in all_changes   if c["type"] == "completed"]
+    tasks_completed        = [c for c in tasks_changes  if c["type"] == "completed"]
+    sheets_completed       = [c for c in sheets_changes if c["type"] == "completed"]
+    sheets_status_changed  = [c for c in sheets_changes if c["type"] == "status_changed"]
 
-    # 5. Gui thong bao thay doi quan trong qua Telegram
-    notify_changes = [
+    # 4a. Dong bo completions -> Postgres (tat ca nguon)
+    db_synced = await _sync_completion_to_db(completed_changes)
+
+    # 4b. Tasks tick done -> cap nhat 'Done' vao Sheet
+    #     (in-memory sheets_snapshot se duoc cap nhat de snapshot luu dung)
+    tasks_to_sheet = 0
+    try:
+        tasks_to_sheet = await _sync_tasks_completion_to_sheet(
+            tasks_completed, sheets_snapshot, loop
+        )
+    except Exception as e:
+        logger.error("Loi sync Tasks->Sheet: %s", e, exc_info=True)
+
+    # 4c. Sheet Done -> danh dau completed trong Google Tasks
+    #     (in-memory tasks_snapshot se duoc cap nhat)
+    sheets_to_tasks = 0
+    try:
+        sheets_to_tasks = await _sync_sheets_completion_to_tasks(
+            sheets_completed, tasks_snapshot, loop
+        )
+    except Exception as e:
+        logger.error("Loi sync Sheet->Tasks: %s", e, exc_info=True)
+
+    # 4d. Sheet status_changed (Reschedule/Pending/Skip) -> Postgres
+    try:
+        await _sync_status_changes_to_db(sheets_status_changed)
+    except Exception as e:
+        logger.error("Loi sync status_changed->DB: %s", e, exc_info=True)
+
+    # 5. Thong bao (dedup cung task tu nhieu nguon)
+    raw_notify = [
         c for c in all_changes
-        if c["type"] in ("completed", "new_task", "removed")
+        if c["type"] in ("completed", "new_task", "removed", "status_changed")
     ]
+    notify_changes = _dedup_changes(raw_notify)
     if notify_changes:
         await _notify_changes(notify_changes)
 
-    # 6. Kiem tra deadline alerts
-    alerts_count = 0
+    # 6. Kiem tra deadline alerts (qua Telegram)
     try:
         await _check_deadline_alerts(sheets_snapshot)
     except Exception as e:
         logger.error("Loi kiem tra deadline: %s", e)
 
-    # 7. Luu snapshots moi
+    # 7. Luu snapshots (kể ca phan da duoc cap nhat in-memory o 4b/4c)
     await save_sync_state("google_tasks", tasks_snapshot)
     await save_sync_state("google_sheets", sheets_snapshot)
     logger.info("Da luu sync snapshots moi")
@@ -458,8 +721,15 @@ async def run() -> dict:
         from services.database import log_agent
         await log_agent(
             agent_name="sync",
-            input_summary=f"Tasks: {len(tasks_snapshot['tasks'])}, Sheets: {len(sheets_snapshot['tasks'])}",
-            output_summary=f"Changes: tasks={len(tasks_changes)}, sheets={len(sheets_changes)}, synced={len(completed_changes)}",
+            input_summary=(
+                f"Tasks: {len(tasks_snapshot['tasks'])}, "
+                f"Sheets: {len(sheets_snapshot['tasks'])}"
+            ),
+            output_summary=(
+                f"Changes: tasks={len(tasks_changes)}, sheets={len(sheets_changes)} | "
+                f"DB synced={db_synced}, Tasks->Sheet={tasks_to_sheet}, "
+                f"Sheet->Tasks={sheets_to_tasks}"
+            ),
         )
     except Exception:
         pass
@@ -467,7 +737,9 @@ async def run() -> dict:
     result = {
         "tasks_changes": len(tasks_changes),
         "sheets_changes": len(sheets_changes),
-        "db_synced": len(completed_changes),
+        "db_synced": db_synced,
+        "tasks_to_sheet": tasks_to_sheet,
+        "sheets_to_tasks": sheets_to_tasks,
         "total_tasks_snapshot": len(tasks_snapshot["tasks"]),
         "total_sheets_snapshot": len(sheets_snapshot["tasks"]),
     }
@@ -478,30 +750,35 @@ async def run() -> dict:
 async def _notify_changes(changes: list[dict]):
     """
     Luu thong bao thay doi vao DB va gui web push notification.
-    Khong gui Telegram de giam tai.
+    Khong gui Telegram de giam tai (tru cac loi nghiem trong).
     """
     from services.database import save_web_notification
     from services.web_push import send_push_notification
 
     lines: list[str] = []
 
-    for c in changes[:10]:  # Gioi han 10 thay doi moi lan
+    for c in changes[:15]:  # Gioi han 15 thay doi moi lan
         task = c["task"]
         source = c["source"].replace("google_", "").replace("_", " ").title()
         ctype = c["type"]
+        name = _clean_task_name(task.get("title", "") or task.get("task", "?"))
 
         if ctype == "completed":
-            name = task.get("title", "") or task.get("task", "?")
             lines.append(f"[x] {name} (tu {source})")
         elif ctype == "new_task":
-            name = task.get("title", "") or task.get("task", "?")
             lines.append(f"[+] {name} (them moi tu {source})")
         elif ctype == "removed":
-            name = task.get("title", "") or task.get("task", "?")
             lines.append(f"[-] {name} (xoa tu {source})")
+        elif ctype == "status_changed":
+            old_s = c.get("old_status", "?").capitalize()
+            new_s = c.get("new_status", "?").capitalize()
+            lines.append(f"[~] {name} ({source}: {old_s} -> {new_s})")
 
-    if len(changes) > 10:
-        lines.append(f"... va {len(changes) - 10} thay doi khac")
+    if len(changes) > 15:
+        lines.append(f"... va {len(changes) - 15} thay doi khac")
+
+    if not lines:
+        return
 
     body = "\n".join(lines)
 
